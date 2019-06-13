@@ -18,12 +18,13 @@ Totally just a POC, mostly for my own amusement
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
+- Here's an [intro article](https://thepacketgeek.com/influence-routing-decisions-with-python-and-exabgp/) about installing & getting started with ExaBGP.
 
 ## Testing Env setup
 For ExaBGP I have the following files:
 
 **conf.ini**
-```
+```ini
 process announce-routes {
     run /path/to/python3 /path/to/announce.py;
     encoder json;
@@ -42,7 +43,7 @@ neighbor 127.0.0.1 {
 ```
 
 **announce.py**
-```
+```python
 #!/usr/bin/env python3
 
 from sys import stdout
@@ -62,7 +63,7 @@ for message in messages:
 
 #Loop endlessly to allow ExaBGP to continue running
 while True:
-        sleep(300)
+    sleep(300)
 ```
 
 Running the exabgp service with the command:
