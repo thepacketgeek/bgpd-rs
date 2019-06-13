@@ -4,6 +4,8 @@ BGP service daemon built in Rust
 
 Totally just a POC, mostly for my own amusement
 
+![PCAP](examples/pcap.png)
+
 
 ## Features
 - [x] Listen for Incoming BGP sessions 
