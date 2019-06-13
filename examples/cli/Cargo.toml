@@ -1,0 +1,17 @@
+[package]
+name = "bgpd-cli"
+version = "0.1.0"
+authors = ["Mat Wood <mat@thepacketgeek.com>"]
+edition = "2018"
+
+[[bin]]
+name = "bgpd-cli"
+path = "src/main.rs"
+
+[dependencies]
+colored = "1.8.0"
+reqwest = "0.9.19"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+structopt = "0.2.18"
+prettytable-rs = "0.8.0"
