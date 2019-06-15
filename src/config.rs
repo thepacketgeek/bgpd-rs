@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::net::IpAddr;
 use std::io::{Read, Result};
+use std::net::IpAddr;
 
 use log::debug;
 use serde_derive::Deserialize;

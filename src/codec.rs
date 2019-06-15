@@ -1,7 +1,7 @@
 use std::io::{Error, Read};
 use std::result::Result;
 
-use bgp_rs::{Message, Open, OpenParameter, Reader};
+use bgp_rs::{Capabilities, Message, Open, OpenParameter, Reader};
 use byteorder::{NetworkEndian, ReadBytesExt};
 use bytes::{BufMut, BytesMut};
 use log::warn;
@@ -13,12 +13,23 @@ use crate::utils::*;
 
 pub type MessageProtocol = Framed<TcpStream, MessageCodec>;
 
-#[derive(Debug)]
-pub struct MessageCodec {}
+pub struct MessageCodec {
+    pub capabilities: Capabilities,
+}
 
 impl MessageCodec {
     pub fn new() -> MessageCodec {
-        MessageCodec {}
+        MessageCodec {
+            capabilities: Capabilities::default(),
+        }
+    }
+
+    pub fn with_capabilities(capabilities: Capabilities) -> MessageCodec {
+        MessageCodec { capabilities }
+    }
+
+    pub fn set_capabilities(&mut self, capabilities: Capabilities) {
+        self.capabilities = capabilities;
     }
 }
 
@@ -29,8 +40,12 @@ impl Decoder for MessageCodec {
     // Look for a BGP message (preamble + length), using bgp-rs to decode each message
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Error> {
         if let Ok(range) = find_msg_range(&buf) {
-            // TODO: Somehow get peer capabilities in here?
-            let mut reader = Reader::new(&buf[range.start..range.stop]);
+            let mut reader = Reader {
+                stream: &buf[range.start..range.stop],
+                capabilities: Capabilities {
+                    ..self.capabilities
+                },
+            };
             if let Ok((_header, message)) = reader.read() {
                 buf.advance(range.stop);
                 return Ok(Some(message));
@@ -121,6 +136,27 @@ fn encode_keepalive() -> Vec<u8> {
     let mut bytes: Vec<u8> = vec![];
     bytes.extend_from_slice(&[4]); // type, Keepalive
     prepend_preamble_and_length(bytes)
+}
+
+pub fn capabilities_from_params(parameters: &Vec<OpenParameter>) -> (Capabilities, Option<u32>) {
+    let mut asn_4_byte: Option<u32> = None;
+    let mut capabilities = Capabilities {
+        FOUR_OCTET_ASN_SUPPORT: false,
+        ..Capabilities::default()
+    };
+    for param in parameters.iter().filter(|p| p.param_type == 2) {
+        match param.value[0] {
+            65 => {
+                asn_4_byte = (&param.value[2..6]).read_u32::<NetworkEndian>().ok();
+                capabilities.FOUR_OCTET_ASN_SUPPORT = true;
+            }
+            69 => {
+                capabilities.EXTENDED_PATH_NLRI_SUPPORT = true;
+            }
+            _ => {}
+        }
+    }
+    (capabilities, asn_4_byte)
 }
 
 #[cfg(test)]

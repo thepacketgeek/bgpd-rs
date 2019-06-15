@@ -28,6 +28,19 @@ pub fn as_u16_be(array: [u8; 2]) -> u16 {
     (u16::from(array[0]) << 8) + u16::from(array[1])
 }
 
+pub fn asn_to_dotted(asn: u32) -> String {
+    if asn < 65535 {
+        format!("{}", asn)
+    } else {
+        let bytes = transform_u32_to_bytes(asn);
+        format!(
+            "{}.{}",
+            as_u16_be([bytes[0], bytes[1]]),
+            as_u16_be([bytes[2], bytes[3]])
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,7 +62,7 @@ mod tests {
         assert_eq!(transform_u16_to_bytes(300), [0x01, 0x2c]); // u8
         assert_eq!(as_u16_be([0x01, 0x2c]), 300); // hex
     }
-    
+
     #[test]
     fn test_u8_transforms() {
         assert_eq!(transform_u8_to_bytes(180), [180]);
@@ -60,6 +73,12 @@ mod tests {
     #[test]
     fn test_as_u32_be() {
         assert_eq!(as_u32_be([1, 1, 1, 1]), 16843009);
+    }
+
+    #[test]
+    fn test_asn_to_dotted() {
+        assert_eq!(asn_to_dotted(100), "100".to_string());
+        assert_eq!(asn_to_dotted(4259840100), "65000.100".to_string());
     }
 
 }

@@ -1,7 +1,7 @@
 use std::io::Error;
 
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use bgp_rs::Message;
 use futures::future::{self, Either, Future};
@@ -13,10 +13,7 @@ use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::{PeerConfig, ServerConfig};
 use crate::peer::{Peer, PeerIdentifier};
 
-fn handle_new_connection(
-    stream: TcpStream,
-    config: Arc<Mutex<ServerConfig>>,
-) {
+fn handle_new_connection(stream: TcpStream, config: Arc<ServerConfig>) {
     let messages = MessageProtocol::new(stream, MessageCodec::new());
 
     let connection = messages
@@ -25,25 +22,23 @@ fn handle_new_connection(
         .map_err(|(e, _)| e)
         // Process the first received Open message
         .and_then(move |(open, protocol)| {
-            if let Ok(config) = config.lock() {
-                let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
-                let peer_config: Option<&PeerConfig> =
-                    config.peers.iter().find(|p| p.remote_ip == peer_addr);
-                if let Some(peer_config) = peer_config {
-                    if let Some(Message::Open(open)) = open {
-                        let peer = Peer::from_open(
-                            protocol,
-                            PeerIdentifier::new(
-                                peer_config.router_id.unwrap_or(config.router_id),
-                                peer_config.local_as.unwrap_or(config.default_as),
-                            ),
-                            open,
-                        );
-                        return Either::B(peer);
-                    }
-                } else {
-                    warn!("Unexpected connection from {}", peer_addr,);
+            let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
+            let peer_config: Option<&PeerConfig> =
+                config.peers.iter().find(|p| p.remote_ip == peer_addr);
+            if let Some(peer_config) = peer_config {
+                if let Some(Message::Open(open)) = open {
+                    let peer = Peer::from_open(
+                        protocol,
+                        PeerIdentifier::new(
+                            peer_config.router_id.unwrap_or(config.router_id),
+                            peer_config.local_as.unwrap_or(config.default_as),
+                        ),
+                        open,
+                    );
+                    return Either::B(peer);
                 }
+            } else {
+                warn!("Unexpected connection from {}", peer_addr,);
             }
             Either::A(future::ok(()))
         })
@@ -56,7 +51,7 @@ fn handle_new_connection(
 pub fn serve(addr: IpAddr, port: u32, config: ServerConfig) -> Result<(), Error> {
     let socket = format!("{}:{}", addr, port);
     let listener = TcpListener::bind(&socket.parse().unwrap())?;
-    let config = Arc::new(Mutex::new(config));
+    let config = Arc::new(config);
 
     let server = listener
         .incoming()
