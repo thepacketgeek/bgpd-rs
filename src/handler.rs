@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::io::Error;
 
 use std::net::IpAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bgp_rs::Message;
 use futures::future::{self, Either, Future};
@@ -10,10 +11,15 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
 use crate::codec::{MessageCodec, MessageProtocol};
-use crate::config::{PeerConfig, ServerConfig};
-use crate::peer::{Peer, PeerIdentifier};
+use crate::config::ServerConfig;
+use crate::peer::{Peer, PeerIdentifier, PeerState, Session};
 
-fn handle_new_connection(stream: TcpStream, config: Arc<ServerConfig>) {
+type Peers = HashMap<IpAddr, Peer>;
+
+fn handle_new_connection(
+    stream: TcpStream,
+    peers: Arc<Mutex<Peers>>,
+) {
     let messages = MessageProtocol::new(stream, MessageCodec::new());
 
     let connection = messages
@@ -23,19 +29,14 @@ fn handle_new_connection(stream: TcpStream, config: Arc<ServerConfig>) {
         // Process the first received Open message
         .and_then(move |(open, protocol)| {
             let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
-            let peer_config: Option<&PeerConfig> =
-                config.peers.iter().find(|p| p.remote_ip == peer_addr);
-            if let Some(peer_config) = peer_config {
+            if let Some(mut peer) = peers.lock().unwrap().remove(&peer_addr) {
                 if let Some(Message::Open(open)) = open {
-                    let peer = Peer::from_open(
-                        protocol,
-                        PeerIdentifier::new(
-                            peer_config.router_id.unwrap_or(config.router_id),
-                            peer_config.local_as.unwrap_or(config.default_as),
-                        ),
-                        open,
-                    );
-                    return Either::B(peer);
+                    let updated_protocol = peer.open_received(open, protocol);
+                    let new_session = Session::new(peer, updated_protocol);
+                    return Either::B(new_session);
+                } else {
+                    warn!("Invalid first packet received");
+                    return Either::A(future::ok(()));
                 }
             } else {
                 warn!("Unexpected connection from {}", peer_addr,);
@@ -51,7 +52,25 @@ fn handle_new_connection(stream: TcpStream, config: Arc<ServerConfig>) {
 pub fn serve(addr: IpAddr, port: u32, config: ServerConfig) -> Result<(), Error> {
     let socket = format!("{}:{}", addr, port);
     let listener = TcpListener::bind(&socket.parse().unwrap())?;
-    let config = Arc::new(config);
+
+    // Peers become attributes (owned by) a session when it begin
+    let peers: Peers = config
+        .peers
+        .iter()
+        .map(|p| {
+            let peer = Peer::new(
+                p.remote_ip,
+                PeerState::Idle,
+                PeerIdentifier::new(
+                    p.router_id.unwrap_or(config.router_id),
+                    p.local_as.unwrap_or(config.default_as),
+                ), // local
+            );
+            (peer.addr, peer)
+        })
+        .collect();
+
+    let peers: Arc<Mutex<Peers>> = Arc::new(Mutex::new(peers));
 
     let server = listener
         .incoming()
@@ -60,7 +79,7 @@ pub fn serve(addr: IpAddr, port: u32, config: ServerConfig) -> Result<(), Error>
                 "Incoming new connection from {}",
                 stream.peer_addr().unwrap()
             );
-            handle_new_connection(stream, config.clone());
+            handle_new_connection(stream, peers.clone());
             Ok(())
         })
         .map_err(|err| error!("Incoming connection failed: {}", err));
