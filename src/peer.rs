@@ -127,9 +127,7 @@ impl Peer {
     pub fn process_message(&mut self, message: Message) -> Result<Option<Message>, Error> {
         trace!("{}: {:?}", self.addr, message);
         let response = match message {
-            Message::KeepAlive => {
-                Some(Message::KeepAlive)
-            }
+            Message::KeepAlive => Some(Message::KeepAlive),
             Message::Update(_) => None,
             Message::Notification => None,
             Message::RouteRefresh(_) => None,
@@ -207,7 +205,8 @@ impl Future for Session {
         while let Async::Ready(data) = self.protocol.poll()? {
             if let Some(message) = data {
                 debug!("[{}] Received message {:?}", self.peer.addr, message);
-                self.peer.process_message(message)
+                self.peer
+                    .process_message(message)
                     .and_then(|resp| {
                         if let Some(data) = resp {
                             self.protocol.start_send(data).ok();
@@ -217,7 +216,7 @@ impl Future for Session {
                     .and_then(|_| self.protocol.poll_complete())?;
                 self.update_last_message();
             } else {
-                // TODO: Update peer state
+                // TODO: Update peer state, add back to Peers for polling
                 warn!("Peer disconnected: {}", self.peer.addr);
                 return Ok(Async::Ready(()));
             }
@@ -229,19 +228,6 @@ impl Future for Session {
 
 impl fmt::Display for Peer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "<Peer {} {} socket={}>",
-            self.addr, self.state.to_string(), self.addr,
-        )
-        // write!(
-        //     f,
-        //     "<Peer {} {} socket={} uptime={} last_message={}>",
-        //     self.remote_id,
-        //     self.state.to_string(),
-        //     self.addr,
-        //     self.connect_time.elapsed().as_secs(),
-        //     self.last_message.elapsed().as_secs(),
-        // )
+        write!(f, "<Peer {} {}>", self.addr, self.state.to_string(),)
     }
 }

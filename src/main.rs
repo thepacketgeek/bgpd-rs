@@ -56,7 +56,7 @@ fn main() -> Result<()> {
         .unwrap_or("127.0.0.1")
         .parse()
         .expect("Must specify a valid IP Address");
-    let port: u32 = matches
+    let port: u16 = matches
         .value_of("port")
         .unwrap_or("179")
         .parse()
