@@ -9,6 +9,7 @@ use futures::future::{self, Either, Future};
 use log::{debug, error, info, warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use tokio::runtime::Runtime;
 
 use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::ServerConfig;
@@ -52,6 +53,7 @@ fn handle_new_connection(
 pub fn serve(addr: IpAddr, port: u32, config: ServerConfig) -> Result<(), Error> {
     let socket = format!("{}:{}", addr, port);
     let listener = TcpListener::bind(&socket.parse().unwrap())?;
+    let mut runtime = Runtime::new().unwrap();
 
     // Peers become attributes (owned by) a session when it begin
     let peers: Peers = config
@@ -85,6 +87,8 @@ pub fn serve(addr: IpAddr, port: u32, config: ServerConfig) -> Result<(), Error>
         .map_err(|err| error!("Incoming connection failed: {}", err));
 
     info!("Starting BGP server on {}...", socket);
-    tokio::run(server);
+    runtime.spawn(server);
+
+    runtime.shutdown_on_idle().wait().unwrap();
     Ok(())
 }
