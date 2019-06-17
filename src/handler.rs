@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
 use futures::future::{self, Either, Future};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use net2::TcpBuilder;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
@@ -21,13 +21,9 @@ use crate::peer::{Peer, PeerIdentifier, PeerState, Session};
 type Peers = HashMap<IpAddr, Peer>;
 
 fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
-    let messages = MessageProtocol::new(stream, MessageCodec::new());
-
-    let connection = messages
+    let connection = MessageProtocol::new(stream, MessageCodec::new())
         .into_future()
-        // `into_future` doesn't have the right error type, so map the error to make it work.
         .map_err(|(e, _)| e)
-        // Process the first received Open message
         .and_then(move |(open, protocol)| {
             let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
             if let Some(mut peer) = peers.lock().unwrap().remove(&peer_addr) {
@@ -45,9 +41,38 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
             Either::A(future::ok(()))
         })
         .map_err(|e| {
-            error!("connection error = {:?}", e);
+            error!("connection error = {}", e);
         });
     tokio::spawn(connection);
+}
+
+fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc<Mutex<Peers>>) {
+    let shared = peers.clone();
+    let builder = match peer {
+        IpAddr::V4(_) => TcpBuilder::new_v4().unwrap(),
+        IpAddr::V6(_) => TcpBuilder::new_v6().unwrap(),
+    };
+    let socket = builder
+        .reuse_address(true)
+        .and_then(|b| b.bind(&SocketAddr::new(source_addr, 0)))
+        .and_then(|b| b.to_tcp_stream())
+        .unwrap();
+    let connect = TcpStream::connect_std(
+        socket,
+        &SocketAddr::new(peer, dest_port),
+        &Handle::default(),
+    )
+    .and_then(move |stream| {
+        trace!(
+            "Attempting connection to peer: {} [from {}]",
+            peer,
+            stream.local_addr().unwrap(),
+        );
+        handle_new_connection(stream, shared.clone());
+        Ok(())
+    })
+    .map_err(move |err| debug!("Initiating BGP Session with {} failed: {:?}", peer, err));
+    tokio::spawn(connect);
 }
 
 pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error> {
@@ -102,37 +127,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
             .map(|(_, p)| p.addr)
             .collect();
         for peer_addr in idle_peers {
-            let shared = future_peers.clone();
-            let socket = TcpBuilder::new_v4()
-                .unwrap()
-                .reuse_address(true)
-                .unwrap()
-                .bind(SocketAddr::new(addr, 0))
-                .unwrap()
-                .to_tcp_stream()
-                .unwrap();
-            let connect = TcpStream::connect_std(
-                socket,
-                &SocketAddr::new(peer_addr, port),
-                &Handle::default(),
-            )
-            .map_err(|err| debug!("Connection attempt failed: {}", err))
-            .and_then(move |stream| {
-                debug!(
-                    "Attempting connection to peer: {} [from {}]",
-                    peer_addr,
-                    stream.local_addr().unwrap(),
-                );
-                handle_new_connection(stream, shared.clone());
-                Ok(())
-            })
-            .map_err(move |err| {
-                debug!(
-                    "Initiating BGP Session with {} failed: {:?}",
-                    peer_addr, err
-                )
-            });
-            tokio::spawn(connect);
+            connect_to_peer(peer_addr, addr, port, future_peers.clone());
         }
         Ok(())
     })
