@@ -175,15 +175,10 @@ impl Peer {
 
 /// This is where a connected peer is managed.
 ///
-/// A `Peer` is also a future representing completely processing the session.
+/// A `Session` is also a future representing completely processing the session.
 ///
-/// When a `Peer` is created, the first line (representing the session's name)
-/// has already been read. When the socket closes, the `Peer` future completes.
-///
-/// While processing, the session future implementation will:
-///
-/// 1) Receive messages on its message channel and write them to the socket.
-/// 2) Receive messages from the socket and broadcast them to all peers.
+/// When a `Session` is created, the first line (representing the session's name)
+/// has already been read. When the socket closes, the `Session` future completes.
 ///
 ///
 /// TODO: Session polls, updating it's peer status
@@ -216,13 +211,18 @@ impl Future for Session {
                     .and_then(|_| self.protocol.poll_complete())?;
                 self.update_last_message();
             } else {
-                // TODO: Update peer state, add back to Peers for polling
-                warn!("Peer disconnected: {}", self.peer.addr);
                 return Ok(Async::Ready(()));
             }
         }
         trace!("Finished polling {}", self);
         Ok(Async::NotReady)
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        // TODO: Update peer state, add back to Peers for polling
+        warn!("Session ended with {}", self.peer);
     }
 }
 

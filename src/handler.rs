@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::io::Error;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
 use futures::future::{self, Either, Future};
 use log::{debug, error, info, warn};
-use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use net2::TcpBuilder;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use tokio::reactor::Handle;
 use tokio::runtime::Runtime;
 use tokio::timer::Interval;
 
@@ -90,27 +92,51 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
 
     let task = Interval::new(
         Instant::now() + Duration::from_secs(10), // Initial delay
-        Duration::from_secs(15),  // Interval
+        Duration::from_secs(15),                  // Interval
     )
     .for_each(move |_| {
-        if let Ok(peers) = future_peers.lock() {
-            for (addr, peer) in peers.iter() {
-                debug!("Caddr: {} peer: {}", addr, peer);
-                // let socket = SocketAddr::new(addr.clone(), port);
-                // let connection = TcpStream::connect(&socket).and_then(|sock| {
-                //     let protocol = MessageProtocol::new(sock, MessageCodec::new());
-                //     protocol.for_each(|message| {
-                //         println!("Received message {:?}", message);
-                //         Ok(())
-                //     })
-                // });
-                // runtime.spawn(connection);
-            }
+        let idle_peers: Vec<IpAddr> = future_peers
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, p)| p.addr)
+            .collect();
+        for peer_addr in idle_peers {
+            let shared = future_peers.clone();
+            let socket = TcpBuilder::new_v4()
+                .unwrap()
+                .reuse_address(true)
+                .unwrap()
+                .bind(SocketAddr::new(addr, 0))
+                .unwrap()
+                .to_tcp_stream()
+                .unwrap();
+            let connect = TcpStream::connect_std(
+                socket,
+                &SocketAddr::new(peer_addr, port),
+                &Handle::default(),
+            )
+            .map_err(|err| debug!("Connection attempt failed: {}", err))
+            .and_then(move |stream| {
+                debug!(
+                    "Attempting connection to peer: {} [from {}]",
+                    peer_addr,
+                    stream.local_addr().unwrap(),
+                );
+                handle_new_connection(stream, shared.clone());
+                Ok(())
+            })
+            .map_err(move |err| {
+                debug!(
+                    "Initiating BGP Session with {} failed: {:?}",
+                    peer_addr, err
+                )
+            });
+            tokio::spawn(connect);
         }
-
         Ok(())
     })
-    .map_err(|e| panic!("interval errored; err={:?}", e));
+    .map_err(|e| error!("interval errored; err={:?}", e));
 
     runtime.spawn(task);
 
