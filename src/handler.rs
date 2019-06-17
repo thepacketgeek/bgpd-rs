@@ -20,6 +20,8 @@ use crate::peer::{Peer, PeerIdentifier, PeerState, Session};
 
 type Peers = HashMap<IpAddr, Peer>;
 
+/// Receives a TcpStream from either an incoming connection or active polling,
+/// and processes the OPEN message for the correct peer (if configured)
 fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
     let connection = MessageProtocol::new(stream, MessageCodec::new())
         .into_future()
@@ -46,6 +48,7 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
     tokio::spawn(connection);
 }
 
+
 fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc<Mutex<Peers>>) {
     let shared = peers.clone();
     let builder = match peer {
@@ -71,7 +74,7 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
         handle_new_connection(stream, shared.clone());
         Ok(())
     })
-    .map_err(move |err| debug!("Initiating BGP Session with {} failed: {:?}", peer, err));
+    .map_err(move |err| trace!("Initiating BGP Session with {} failed: {:?}", peer, err));
     tokio::spawn(connect);
 }
 
@@ -80,7 +83,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     let listener = TcpListener::bind(&socket.parse().unwrap())?;
     let mut runtime = Runtime::new().unwrap();
 
-    // Peers become attributes (owned by) a session when it begin
+    // Peers are owned by a session when it begins
     let peers: Peers = config
         .peers
         .iter()
@@ -88,8 +91,9 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
             let peer = Peer::new(
                 p.remote_ip,
                 PeerState::Idle,
+                PeerIdentifier::new(None, p.remote_as), // remote
                 PeerIdentifier::new(
-                    p.router_id.unwrap_or(config.router_id),
+                    Some(p.router_id.unwrap_or(config.router_id)),
                     p.local_as.unwrap_or(config.default_as),
                 ), // local
             );

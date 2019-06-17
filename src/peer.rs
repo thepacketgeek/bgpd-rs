@@ -67,26 +67,32 @@ impl std::string::ToString for PeerState {
 }
 
 pub struct PeerIdentifier {
-    pub router_id: IpAddr,
+    pub router_id: Option<IpAddr>,
     pub asn: u32,
 }
 
 impl PeerIdentifier {
-    pub fn new(router_id: IpAddr, asn: u32) -> PeerIdentifier {
+    pub fn new(router_id: Option<IpAddr>, asn: u32) -> PeerIdentifier {
         PeerIdentifier { router_id, asn }
     }
 }
 
 impl fmt::Display for PeerIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} | {}]", self.router_id, asn_to_dotted(self.asn))
+        write!(
+            f,
+            "[{} | {}]",
+            self.router_id
+                .unwrap_or("0.0.0.0".parse::<IpAddr>().unwrap()),
+            asn_to_dotted(self.asn)
+        )
     }
 }
 
 #[allow(dead_code)]
 pub struct Peer {
     pub addr: IpAddr,
-    // remote_id: PeerIdentifier,
+    remote_id: PeerIdentifier,
     local_id: PeerIdentifier, // Server (local side) ID
     state: PeerState,
 }
@@ -95,13 +101,13 @@ impl Peer {
     pub fn new(
         addr: IpAddr,
         state: PeerState,
-        // remote_id: PeerIdentifier,
+        remote_id: PeerIdentifier,
         local_id: PeerIdentifier,
     ) -> Peer {
         Peer {
             addr,
             state,
-            // remote_id,
+            remote_id,
             local_id,
         }
     }
@@ -110,7 +116,7 @@ impl Peer {
         let peer_addr = protocol.get_ref().peer_addr().unwrap();
         let (capabilities, remote_asn) = capabilities_from_params(&open.parameters);
         let remote_id = PeerIdentifier::new(
-            IpAddr::from(transform_u32_to_bytes(open.identifier)),
+            Some(IpAddr::from(transform_u32_to_bytes(open.identifier))),
             remote_asn.unwrap_or(u32::from(open.peer_asn)),
         );
         debug!(
@@ -119,29 +125,15 @@ impl Peer {
             remote_id,
             open.parameters.len()
         );
+        self.remote_id = remote_id;
         protocol.codec_mut().set_capabilities(capabilities);
         self.state = PeerState::OpenConfirm;
         protocol
     }
 
-    pub fn process_message(&mut self, message: Message) -> Result<Option<Message>, Error> {
-        trace!("{}: {:?}", self.addr, message);
-        let response = match message {
-            Message::KeepAlive => Some(Message::KeepAlive),
-            Message::Update(_) => None,
-            Message::Notification => None,
-            Message::RouteRefresh(_) => None,
-            _ => {
-                warn!("{} Unexpected message {:?}", self.addr, message);
-                return Err(Error::from(ErrorKind::InvalidInput));
-            }
-        };
-        Ok(response)
-    }
-
     fn create_open(&self) -> Open {
         let router_id = match self.local_id.router_id {
-            IpAddr::V4(ipv4) => ipv4,
+            Some(IpAddr::V4(ipv4)) => ipv4,
             _ => unreachable!(),
         };
         Open {
@@ -170,6 +162,21 @@ impl Peer {
                 },
             ],
         }
+    }
+
+    pub fn process_message(&mut self, message: Message) -> Result<Option<Message>, Error> {
+        trace!("{}: {:?}", self.addr, message);
+        let response = match message {
+            Message::KeepAlive => Some(Message::KeepAlive),
+            Message::Update(_) => None,
+            Message::Notification => None,
+            Message::RouteRefresh(_) => None,
+            _ => {
+                warn!("{} Unexpected message {:?}", self.addr, message);
+                return Err(Error::from(ErrorKind::InvalidInput));
+            }
+        };
+        Ok(response)
     }
 }
 
@@ -228,6 +235,6 @@ impl Drop for Session {
 
 impl fmt::Display for Peer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<Peer {} {}>", self.addr, self.state.to_string(),)
+        write!(f, "<Peer {} {} {}>", self.addr, self.remote_id, self.state.to_string(),)
     }
 }
