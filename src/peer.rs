@@ -111,6 +111,16 @@ impl Peer {
         }
     }
 
+    pub fn update_state(&mut self, new_state: PeerState) {
+        debug!(
+            "[{}] went from {} to {}",
+            self.addr,
+            self.state.to_string(),
+            new_state.to_string()
+        );
+        self.state = new_state;
+    }
+
     pub fn open_received(&mut self, open: Open, mut protocol: MessageProtocol) -> MessageProtocol {
         let peer_addr = protocol.get_ref().peer_addr().unwrap();
         let (capabilities, remote_asn) = capabilities_from_params(&open.parameters);
@@ -126,7 +136,7 @@ impl Peer {
         );
         self.remote_id = remote_id;
         protocol.codec_mut().set_capabilities(capabilities);
-        self.state = PeerState::OpenConfirm;
+        self.update_state(PeerState::OpenConfirm);
         protocol
     }
 
@@ -234,6 +244,12 @@ impl Drop for Session {
 
 impl fmt::Display for Peer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<Peer {} {} {}>", self.addr, self.remote_id, self.state.to_string(),)
+        write!(
+            f,
+            "<Peer {} {} {}>",
+            self.addr,
+            self.remote_id,
+            self.state.to_string(),
+        )
     }
 }

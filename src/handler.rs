@@ -28,6 +28,11 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
         .map_err(|(e, _)| e)
         .and_then(move |(open, protocol)| {
             let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
+            if let Ok(mut peers) = peers.lock() {
+                if let Some(peer) = peers.get_mut(&peer_addr) {
+                    peer.update_state(PeerState::OpenSent);
+                }
+            }
             if let Some(mut peer) = peers.lock().unwrap().remove(&peer_addr) {
                 if let Some(Message::Open(open)) = open {
                     let updated_protocol = peer.open_received(open, protocol);
@@ -48,9 +53,29 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
     tokio::spawn(connection);
 }
 
-
 fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc<Mutex<Peers>>) {
-    let shared = peers.clone();
+    if let Ok(mut peers) = peers.lock() {
+        if let Some(peer) = peers.get_mut(&peer) {
+            peer.update_state(PeerState::Active);
+        }
+    }
+    let establish_peer = {
+        let peers = peers.clone();
+        move |stream: TcpStream| {
+            trace!(
+                "Attempting connection to peer: {} [from {}]",
+                peer,
+                stream.local_addr().unwrap(),
+            );
+            if let Ok(mut peers) = peers.lock() {
+                if let Some(peer) = peers.get_mut(&peer) {
+                    peer.update_state(PeerState::Connect);
+                }
+            }
+            handle_new_connection(stream, peers.clone());
+            Ok(())
+        }
+    };
     let builder = match peer {
         IpAddr::V4(_) => TcpBuilder::new_v4().unwrap(),
         IpAddr::V6(_) => TcpBuilder::new_v6().unwrap(),
@@ -65,16 +90,16 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
         &SocketAddr::new(peer, dest_port),
         &Handle::default(),
     )
-    .and_then(move |stream| {
-        trace!(
-            "Attempting connection to peer: {} [from {}]",
-            peer,
-            stream.local_addr().unwrap(),
-        );
-        handle_new_connection(stream, shared.clone());
-        Ok(())
-    })
-    .map_err(move |err| trace!("Initiating BGP Session with {} failed: {:?}", peer, err));
+    .timeout(Duration::from_secs(2))
+    .and_then(establish_peer)
+    .map_err(move |err| {
+        trace!("Initiating BGP Session with {} failed: {:?}", peer, err);
+        if let Ok(mut peers) = peers.lock() {
+            if let Some(peer) = peers.get_mut(&peer) {
+                peer.update_state(PeerState::Idle);
+            }
+        }
+    });
     tokio::spawn(connect);
 }
 
