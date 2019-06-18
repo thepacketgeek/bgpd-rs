@@ -89,7 +89,6 @@ impl fmt::Display for PeerIdentifier {
     }
 }
 
-#[allow(dead_code)]
 pub struct Peer {
     pub addr: IpAddr,
     remote_id: PeerIdentifier,
