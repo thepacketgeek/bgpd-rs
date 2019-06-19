@@ -40,8 +40,8 @@ neighbor 127.0.0.1 {
     # passive true;  // Uncomment to test active connections from bgpd
 
     capability {
-                     asn4 enable;
-        }
+        asn4 enable;
+    }
     family {
         ipv4 unicast;
         ipv6 unicast;
