@@ -1,6 +1,7 @@
+use futures::sync::mpsc;
 use std::fmt;
 use std::io::{Error, ErrorKind};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
 use bgp_rs::{Message, Open, OpenParameter};
@@ -15,15 +16,17 @@ pub struct Session {
     protocol: MessageProtocol,
     connect_time: Instant,
     last_message: Instant,
+    channel: Tx,
 }
 
 impl Session {
-    pub fn new(peer: Peer, protocol: MessageProtocol) -> Session {
+    pub fn new(peer: Peer, protocol: MessageProtocol, channel: Tx) -> Session {
         Session {
             peer: Box::new(peer),
             protocol,
             connect_time: Instant::now(),
             last_message: Instant::now(),
+            channel,
         }
     }
 
@@ -84,7 +87,7 @@ impl fmt::Display for PeerIdentifier {
             f,
             "{}/{}",
             self.router_id
-                .unwrap_or("0.0.0.0".parse::<IpAddr>().unwrap()),
+                .unwrap_or_else(|| IpAddr::from(Ipv4Addr::new(0, 0, 0, 0))),
             asn_to_dotted(self.asn)
         )
     }
@@ -127,7 +130,7 @@ impl Peer {
         let (capabilities, remote_asn) = capabilities_from_params(&open.parameters);
         let remote_id = PeerIdentifier::new(
             Some(IpAddr::from(transform_u32_to_bytes(open.identifier))),
-            remote_asn.unwrap_or(u32::from(open.peer_asn)),
+            remote_asn.unwrap_or_else(|| u32::from(open.peer_asn)),
         );
         debug!(
             "[{}] Received OPEN {} [w/ {} params]",
@@ -190,6 +193,18 @@ impl Peer {
     }
 }
 
+impl fmt::Display for Peer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "<Peer {} {} {}>",
+            self.addr,
+            self.remote_id,
+            self.state.to_string(),
+        )
+    }
+}
+
 /// This is where a connected peer is managed.
 ///
 /// A `Session` is also a future representing completely processing the session.
@@ -228,6 +243,23 @@ impl Future for Session {
                     .and_then(|_| self.protocol.poll_complete())?;
                 self.update_last_message();
             } else {
+                warn!("Session ended with {}", self.peer);
+                // Before the Session is dropped, need to send the peer
+                // back to the peers HashMap.
+                // Create a dummy peer to replace self.peer
+                let temp_ip = "0.0.0.0".parse().unwrap();
+                let temp_peer = Peer::new(
+                    "0.0.0.0".parse().unwrap(),
+                    PeerState::Idle,
+                    PeerIdentifier::new(Some(temp_ip), 0),
+                    PeerIdentifier::new(Some(temp_ip), 0),
+                );
+                let mut peer = std::mem::replace(&mut self.peer, Box::new(temp_peer));
+                peer.update_state(PeerState::Idle);
+                self.channel
+                    .start_send(*peer)
+                    .and_then(|_| self.channel.poll_complete())
+                    .ok();
                 return Ok(Async::Ready(()));
             }
         }
@@ -236,21 +268,36 @@ impl Future for Session {
     }
 }
 
-impl Drop for Session {
-    fn drop(&mut self) {
-        // TODO: Update peer state, add back to Peers for polling
-        warn!("Session ended with {}", self.peer);
+/// Transmit half of the message channel.
+pub type Tx = mpsc::UnboundedSender<Peer>;
+/// Receive half of the message channel.
+pub type Rx = mpsc::UnboundedReceiver<Peer>;
+
+pub struct Channel {
+    receiver: Rx,
+    sender: Tx,
+}
+
+impl Channel {
+    pub fn new() -> Channel {
+        let (sender, receiver) = mpsc::unbounded();
+        Channel { receiver, sender }
+    }
+
+    pub fn add_sender(&self) -> Tx {
+        self.sender.clone()
     }
 }
 
-impl fmt::Display for Peer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "<Peer {} {} {}>",
-            self.addr,
-            self.remote_id,
-            self.state.to_string(),
-        )
+impl Future for Channel {
+    type Item = Peer;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Error> {
+        // Check for peers returned from ended Session
+        if let Async::Ready(Some(peer)) = self.receiver.poll().unwrap() {
+            return Ok(Async::Ready(peer));
+        }
+        Ok(Async::NotReady)
     }
 }

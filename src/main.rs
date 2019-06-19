@@ -77,9 +77,6 @@ fn main() -> Result<()> {
     let config = ServerConfig::from_file(&config_path)?;
     debug!("Found {} peers in {}", config.peers.len(), config_path);
 
-    // TODO, setup Server like this
-    // let server = Server(config);
-    // server.serve(addr, port)?;
     serve(addr, port, config)?;
 
     Ok(())

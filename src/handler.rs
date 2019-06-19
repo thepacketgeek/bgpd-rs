@@ -16,13 +16,13 @@ use tokio::timer::Interval;
 
 use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::ServerConfig;
-use crate::peer::{Peer, PeerIdentifier, PeerState, Session};
+use crate::peer::{Channel, Peer, PeerIdentifier, PeerState, Session, Tx};
 
 type Peers = HashMap<IpAddr, Peer>;
 
 /// Receives a TcpStream from either an incoming connection or active polling,
 /// and processes the OPEN message for the correct peer (if configured)
-fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
+fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: Tx) {
     let connection = MessageProtocol::new(stream, MessageCodec::new())
         .into_future()
         .map_err(|(e, _)| e)
@@ -32,7 +32,7 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
                 peer.update_state(PeerState::OpenSent);
                 if let Some(Message::Open(open)) = open {
                     let updated_protocol = peer.open_received(open, protocol);
-                    let new_session = Session::new(peer, updated_protocol);
+                    let new_session = Session::new(peer, updated_protocol, channel);
                     return Either::B(new_session);
                 } else {
                     warn!("Invalid first packet received");
@@ -49,15 +49,48 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
     tokio::spawn(connection);
 }
 
-fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc<Mutex<Peers>>) {
+fn connect_to_peer(
+    peer: IpAddr,
+    source_addr: IpAddr,
+    dest_port: u16,
+    peers: Arc<Mutex<Peers>>,
+    channel: Tx,
+) {
     if let Ok(mut peers) = peers.lock() {
         if let Some(peer) = peers.get_mut(&peer) {
             peer.update_state(PeerState::Active);
         }
     }
-    let establish_peer = {
-        let peers = peers.clone();
-        move |stream: TcpStream| {
+    let builder = match peer {
+        IpAddr::V4(_) => TcpBuilder::new_v4().unwrap(),
+        IpAddr::V6(_) => TcpBuilder::new_v6().unwrap(),
+    };
+    let socket = builder
+        .reuse_address(true)
+        .and_then(|b| b.bind(&SocketAddr::new(source_addr, 0)))
+        .and_then(TcpBuilder::to_tcp_stream)
+        .unwrap();
+
+    let connect = {
+        let handle_error = {
+            let peers = peers.clone();
+            move |err| {
+                trace!("Initiating BGP Session with {} failed: {:?}", peer, err);
+                if let Ok(mut peers) = peers.lock() {
+                    if let Some(peer) = peers.get_mut(&peer) {
+                        peer.update_state(PeerState::Idle);
+                    }
+                }
+            }
+        };
+
+        TcpStream::connect_std(
+            socket,
+            &SocketAddr::new(peer, dest_port),
+            &Handle::default(),
+        )
+        .timeout(Duration::from_secs(2))
+        .and_then(move |stream| {
             trace!(
                 "Attempting connection to peer: {} [from {}]",
                 peer,
@@ -68,34 +101,11 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
                     peer.update_state(PeerState::Connect);
                 }
             }
-            handle_new_connection(stream, peers.clone());
+            handle_new_connection(stream, peers.clone(), channel);
             Ok(())
-        }
+        })
+        .map_err(handle_error)
     };
-    let builder = match peer {
-        IpAddr::V4(_) => TcpBuilder::new_v4().unwrap(),
-        IpAddr::V6(_) => TcpBuilder::new_v6().unwrap(),
-    };
-    let socket = builder
-        .reuse_address(true)
-        .and_then(|b| b.bind(&SocketAddr::new(source_addr, 0)))
-        .and_then(|b| b.to_tcp_stream())
-        .unwrap();
-    let connect = TcpStream::connect_std(
-        socket,
-        &SocketAddr::new(peer, dest_port),
-        &Handle::default(),
-    )
-    .timeout(Duration::from_secs(2))
-    .and_then(establish_peer)
-    .map_err(move |err| {
-        trace!("Initiating BGP Session with {} failed: {:?}", peer, err);
-        if let Ok(mut peers) = peers.lock() {
-            if let Some(peer) = peers.get_mut(&peer) {
-                peer.update_state(PeerState::Idle);
-            }
-        }
-    });
     tokio::spawn(connect);
 }
 
@@ -104,7 +114,10 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     let listener = TcpListener::bind(&socket.parse().unwrap())?;
     let mut runtime = Runtime::new().unwrap();
 
+    let channel = Channel::new();
+
     // Peers are owned by a session when it begins
+    // to be returned via Channel when the session drops
     let peers: Peers = config
         .peers
         .iter()
@@ -123,42 +136,67 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
         .collect();
 
     let peers: Arc<Mutex<Peers>> = Arc::new(Mutex::new(peers));
-    let future_peers = peers.clone();
 
-    let server = listener
-        .incoming()
-        .for_each(move |stream| {
-            debug!(
-                "Incoming new connection from {}",
-                stream.peer_addr().unwrap()
-            );
-            handle_new_connection(stream, peers.clone());
-            Ok(())
-        })
-        .map_err(|err| error!("Incoming connection failed: {}", err));
-
+    // TCP Listener task
+    let server = {
+        let peers = peers.clone();
+        let sender = channel.add_sender();
+        listener
+            .incoming()
+            .for_each(move |stream: TcpStream| {
+                debug!(
+                    "Incoming new connection from {}",
+                    stream.peer_addr().unwrap()
+                );
+                handle_new_connection(stream, peers.clone(), sender.clone());
+                Ok(())
+            })
+            .map_err(|err| error!("Incoming connection failed: {}", err))
+    };
     info!("Starting BGP server on {}...", socket);
     runtime.spawn(server);
 
-    let task = Interval::new(
-        Instant::now() + Duration::from_secs(10), // Initial delay
-        Duration::from_secs(15),                  // Interval
-    )
-    .for_each(move |_| {
-        let idle_peers: Vec<IpAddr> = future_peers
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(_, p)| p.addr)
-            .collect();
-        for peer_addr in idle_peers {
-            connect_to_peer(peer_addr, addr, port, future_peers.clone());
-        }
-        Ok(())
-    })
-    .map_err(|e| error!("interval errored; err={:?}", e));
+    // TCP Connections outbound
+    // Attempt to connect to configured & idle peers
+    let connect = {
+        let peers = peers.clone();
+        let sender = channel.add_sender();
+        Interval::new(
+            Instant::now() + Duration::from_secs(10), // Initial delay
+            Duration::from_secs(15),                  // Interval
+        )
+        .for_each(move |_| {
+            let idle_peers: Vec<IpAddr> =
+                peers.lock().unwrap().iter().map(|(_, p)| p.addr).collect();
+            for peer_addr in idle_peers {
+                connect_to_peer(peer_addr, addr, port, peers.clone(), sender.clone());
+            }
+            Ok(())
+        })
+        .map_err(|e| error!("Error executing interval: {:?}", e))
+    };
+    runtime.spawn(connect);
 
-    runtime.spawn(task);
+    // When sessions are dropped, they will send peers back over the
+    // channel. Poll the channel and add back to the idle Peers container.
+    let peer_poller = {
+        let peers = peers.clone();
+        channel
+            .into_future()
+            .and_then(move |peer| {
+                debug!("Adding {} back to idle peers", peer);
+                peers
+                    .lock()
+                    .map(|mut peers| {
+                        peers.insert(peer.addr, peer);
+                    })
+                    .ok();
+                future::ok(())
+            })
+            .map(|_| ())
+            .map_err(|_| ())
+    };
+    runtime.spawn(peer_poller);
 
     runtime.shutdown_on_idle().wait().unwrap();
     Ok(())
