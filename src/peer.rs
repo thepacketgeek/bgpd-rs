@@ -98,6 +98,7 @@ pub struct Peer {
     remote_id: PeerIdentifier,
     local_id: PeerIdentifier, // Server (local side) ID
     state: PeerState,
+    passive: bool,
 }
 
 impl Peer {
@@ -106,13 +107,19 @@ impl Peer {
         state: PeerState,
         remote_id: PeerIdentifier,
         local_id: PeerIdentifier,
+        passive: bool,
     ) -> Peer {
         Peer {
             addr,
             state,
             remote_id,
             local_id,
+            passive,
         }
+    }
+
+    pub fn is_passive(&self) -> bool {
+        self.passive
     }
 
     pub fn update_state(&mut self, new_state: PeerState) {
@@ -193,6 +200,19 @@ impl Peer {
     }
 }
 
+impl Default for Peer {
+    fn default() -> Self {
+        let ip = "0.0.0.0".parse().unwrap();
+        Peer::new(
+            ip,
+            PeerState::Idle,
+            PeerIdentifier::new(Some(ip), 0),
+            PeerIdentifier::new(Some(ip), 0),
+            false,
+        )
+    }
+}
+
 impl fmt::Display for Peer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -246,15 +266,8 @@ impl Future for Session {
                 warn!("Session ended with {}", self.peer);
                 // Before the Session is dropped, need to send the peer
                 // back to the peers HashMap.
-                // Create a dummy peer to replace self.peer
-                let temp_ip = "0.0.0.0".parse().unwrap();
-                let temp_peer = Peer::new(
-                    "0.0.0.0".parse().unwrap(),
-                    PeerState::Idle,
-                    PeerIdentifier::new(Some(temp_ip), 0),
-                    PeerIdentifier::new(Some(temp_ip), 0),
-                );
-                let mut peer = std::mem::replace(&mut self.peer, Box::new(temp_peer));
+                // Create a default peer to replace self.peer
+                let mut peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
                 peer.update_state(PeerState::Idle);
                 self.channel
                     .start_send(*peer)
@@ -268,9 +281,7 @@ impl Future for Session {
     }
 }
 
-/// Transmit half of the message channel.
 pub type Tx = mpsc::UnboundedSender<Peer>;
-/// Receive half of the message channel.
 pub type Rx = mpsc::UnboundedReceiver<Peer>;
 
 pub struct Channel {

@@ -6,12 +6,22 @@ use log::debug;
 use serde_derive::Deserialize;
 use toml;
 
+fn default_passive() -> bool {
+    false
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PeerConfig {
     pub remote_ip: IpAddr,
     pub remote_as: u32,
     pub local_as: Option<u32>,
     pub router_id: Option<IpAddr>,
+
+    // Only listen to incoming TCP sessions for passive peers
+    // And don't attempt outbound TCP connections
+    // Default == false
+    #[serde(default = "default_passive")]
+    pub passive: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,5 +59,6 @@ mod tests {
             .find(|p| p.remote_ip == IpAddr::from(Ipv4Addr::new(127, 0, 0, 2)))
             .unwrap();
         assert_eq!(peer.local_as, Some(65000));
+        assert!(!peer.passive);
     }
 }

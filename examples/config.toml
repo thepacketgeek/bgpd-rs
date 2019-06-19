@@ -4,6 +4,7 @@ default_as = 65000
 [[peers]]
 remote_ip = "172.16.20.113"
 remote_as = 65000
+passive = true
 
 [[peers]]
 remote_ip = "127.0.0.2"

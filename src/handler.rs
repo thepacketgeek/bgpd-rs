@@ -130,6 +130,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                     Some(p.router_id.unwrap_or(config.router_id)),
                     p.local_as.unwrap_or(config.default_as),
                 ), // local
+                p.passive,
             );
             (peer.addr, peer)
         })
@@ -166,8 +167,16 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
             Duration::from_secs(15),                  // Interval
         )
         .for_each(move |_| {
-            let idle_peers: Vec<IpAddr> =
-                peers.lock().unwrap().iter().map(|(_, p)| p.addr).collect();
+            let idle_peers: Vec<IpAddr> = peers
+                .lock()
+                .map(|peers| {
+                    peers
+                        .iter()
+                        .filter(|(_, p)| p.is_passive() == false)
+                        .map(|(_, p)| p.addr)
+                        .collect()
+                })
+                .unwrap_or(vec![]);
             for peer_addr in idle_peers {
                 connect_to_peer(peer_addr, addr, port, peers.clone(), sender.clone());
             }
