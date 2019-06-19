@@ -28,12 +28,8 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
         .map_err(|(e, _)| e)
         .and_then(move |(open, protocol)| {
             let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
-            if let Ok(mut peers) = peers.lock() {
-                if let Some(peer) = peers.get_mut(&peer_addr) {
-                    peer.update_state(PeerState::OpenSent);
-                }
-            }
             if let Some(mut peer) = peers.lock().unwrap().remove(&peer_addr) {
+                peer.update_state(PeerState::OpenSent);
                 if let Some(Message::Open(open)) = open {
                     let updated_protocol = peer.open_received(open, protocol);
                     let new_session = Session::new(peer, updated_protocol);
