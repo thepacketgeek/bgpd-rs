@@ -1,14 +1,51 @@
+use futures::sync::mpsc;
 use std::fmt;
 use std::io::{Error, ErrorKind};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
 use bgp_rs::{Message, Open, OpenParameter};
-use log::{debug, info, trace, warn};
+use log::{debug, trace, warn};
 use tokio::prelude::*;
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
+
+pub struct Session {
+    peer: Box<Peer>,
+    protocol: MessageProtocol,
+    connect_time: Instant,
+    last_message: Instant,
+    channel: Tx,
+}
+
+impl Session {
+    pub fn new(peer: Peer, protocol: MessageProtocol, channel: Tx) -> Session {
+        Session {
+            peer: Box::new(peer),
+            protocol,
+            connect_time: Instant::now(),
+            last_message: Instant::now(),
+            channel,
+        }
+    }
+
+    fn update_last_message(&mut self) {
+        self.last_message = Instant::now();
+    }
+}
+
+impl fmt::Display for Session {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "<Session {} uptime={} last_message={}>",
+            self.protocol.get_ref().peer_addr().unwrap(),
+            self.connect_time.elapsed().as_secs(),
+            self.last_message.elapsed().as_secs(),
+        )
+    }
+}
 
 pub enum PeerState {
     Connect,
@@ -19,77 +56,88 @@ pub enum PeerState {
     Established,
 }
 
-impl std::string::ToString for PeerState {
-    fn to_string(&self) -> String {
-        match self {
-            PeerState::Connect => "Connect".to_string(),
-            PeerState::Active => "Active".to_string(),
-            PeerState::Idle => "Idle".to_string(),
-            PeerState::OpenSent => "OpenSent".to_string(),
-            PeerState::OpenConfirm => "OpenConfirm".to_string(),
-            PeerState::Established => "Established".to_string(),
-        }
+impl fmt::Display for PeerState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let word = match self {
+            PeerState::Connect { .. } => "Connect",
+            PeerState::Active => "Active",
+            PeerState::Idle => "Idle",
+            PeerState::OpenSent { .. } => "OpenSent",
+            PeerState::OpenConfirm { .. } => "OpenConfirm",
+            PeerState::Established { .. } => "Established",
+        };
+        write!(f, "{}", word)
     }
 }
 
 pub struct PeerIdentifier {
-    pub router_id: IpAddr,
+    pub router_id: Option<IpAddr>,
     pub asn: u32,
 }
 
 impl PeerIdentifier {
-    pub fn new(router_id: IpAddr, asn: u32) -> PeerIdentifier {
+    pub fn new(router_id: Option<IpAddr>, asn: u32) -> PeerIdentifier {
         PeerIdentifier { router_id, asn }
     }
 }
 
 impl fmt::Display for PeerIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} | {}]", self.router_id, asn_to_dotted(self.asn))
+        write!(
+            f,
+            "{}/{}",
+            self.router_id
+                .unwrap_or_else(|| IpAddr::from(Ipv4Addr::new(0, 0, 0, 0))),
+            asn_to_dotted(self.asn)
+        )
     }
 }
 
-#[allow(dead_code)]
 pub struct Peer {
-    // TCP Session
-    addr: SocketAddr,
-    messages: MessageProtocol,
-
-    // BGP Config
+    pub addr: IpAddr,
     remote_id: PeerIdentifier,
     local_id: PeerIdentifier, // Server (local side) ID
     state: PeerState,
-    connect_time: Instant,
-    last_message: Instant,
+    passive: bool,
 }
 
 impl Peer {
     pub fn new(
-        messages: MessageProtocol,
+        addr: IpAddr,
         state: PeerState,
         remote_id: PeerIdentifier,
         local_id: PeerIdentifier,
+        passive: bool,
     ) -> Peer {
-        let addr = messages.get_ref().peer_addr().unwrap();
-
-        info!("[{}] New Connection", addr);
         Peer {
             addr,
-            messages,
             state,
             remote_id,
             local_id,
-            connect_time: Instant::now(),
-            last_message: Instant::now(),
+            passive,
         }
     }
 
-    pub fn from_open(mut messages: MessageProtocol, local_id: PeerIdentifier, open: Open) -> Peer {
-        let peer_addr = messages.get_ref().peer_addr().unwrap();
+    pub fn is_passive(&self) -> bool {
+        self.passive
+    }
+
+    pub fn update_state(&mut self, new_state: PeerState) {
+        debug!(
+            "{} went from {} to {}",
+            self.addr,
+            self.state.to_string(),
+            new_state.to_string()
+        );
+        self.state = new_state;
+    }
+
+    pub fn open_received(&mut self, open: Open, mut protocol: MessageProtocol) -> MessageProtocol {
+        let peer_addr = protocol.get_ref().peer_addr().unwrap();
         let (capabilities, remote_asn) = capabilities_from_params(&open.parameters);
         let remote_id = PeerIdentifier::new(
-            IpAddr::from(transform_u32_to_bytes(open.identifier)),
-            remote_asn.unwrap_or(u32::from(open.peer_asn)),
+            Some(IpAddr::from(transform_u32_to_bytes(open.identifier))),
+            remote_asn.unwrap_or_else(|| u32::from(open.peer_asn)),
         );
         debug!(
             "[{}] Received OPEN {} [w/ {} params]",
@@ -97,35 +145,15 @@ impl Peer {
             remote_id,
             open.parameters.len()
         );
-        messages.codec_mut().set_capabilities(capabilities);
-        Peer::new(messages, PeerState::OpenConfirm, remote_id, local_id)
-    }
-
-    fn update_last_message(&mut self) {
-        self.last_message = Instant::now();
-    }
-
-    pub fn process_message(&mut self, message: Message) -> Result<Option<Message>, Error> {
-        trace!("{}: {:?}", self.remote_id, message);
-        let response = match message {
-            Message::KeepAlive => {
-                self.update_last_message();
-                Some(Message::KeepAlive)
-            }
-            Message::Update(_) => None,
-            Message::Notification => None,
-            Message::RouteRefresh(_) => None,
-            _ => {
-                warn!("{} Unexpected message {:?}", self.remote_id, message);
-                return Err(Error::from(ErrorKind::InvalidInput));
-            }
-        };
-        Ok(response)
+        self.remote_id = remote_id;
+        protocol.codec_mut().set_capabilities(capabilities);
+        self.update_state(PeerState::OpenConfirm);
+        protocol
     }
 
     fn create_open(&self) -> Open {
         let router_id = match self.local_id.router_id {
-            IpAddr::V4(ipv4) => ipv4,
+            Some(IpAddr::V4(ipv4)) => ipv4,
             _ => unreachable!(),
         };
         Open {
@@ -155,49 +183,96 @@ impl Peer {
             ],
         }
     }
+
+    pub fn process_message(&mut self, message: Message) -> Result<Option<Message>, Error> {
+        trace!("{}: {:?}", self.addr, message);
+        let response = match message {
+            Message::KeepAlive => Some(Message::KeepAlive),
+            Message::Update(_) => None,
+            Message::Notification => None,
+            Message::RouteRefresh(_) => None,
+            _ => {
+                warn!("{} Unexpected message {:?}", self.addr, message);
+                return Err(Error::from(ErrorKind::InvalidInput));
+            }
+        };
+        Ok(response)
+    }
+}
+
+impl Default for Peer {
+    fn default() -> Self {
+        let ip = "0.0.0.0".parse().unwrap();
+        Peer::new(
+            ip,
+            PeerState::Idle,
+            PeerIdentifier::new(Some(ip), 0),
+            PeerIdentifier::new(Some(ip), 0),
+            false,
+        )
+    }
+}
+
+impl fmt::Display for Peer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "<Peer {} {} {}>",
+            self.addr,
+            self.remote_id,
+            self.state.to_string(),
+        )
+    }
 }
 
 /// This is where a connected peer is managed.
 ///
-/// A `Peer` is also a future representing completely processing the session.
+/// A `Session` is also a future representing completely processing the session.
 ///
-/// When a `Peer` is created, the first line (representing the session's name)
-/// has already been read. When the socket closes, the `Peer` future completes.
+/// When a `Session` is created, the first line (representing the session's name)
+/// has already been read. When the socket closes, the `Session` future completes.
 ///
-/// While processing, the session future implementation will:
 ///
-/// 1) Receive messages on its message channel and write them to the socket.
-/// 2) Receive messages from the socket and broadcast them to all peers.
-///
-impl Future for Peer {
+/// TODO: Session polls, updating it's peer status
+impl Future for Session {
     type Item = ();
     type Error = Error;
 
     fn poll(&mut self) -> Poll<(), Error> {
         trace!("Polling {}", self);
 
-        if let PeerState::OpenConfirm = self.state {
-            self.messages
-                .start_send(Message::Open(self.create_open()))
-                .and_then(|_| self.messages.poll_complete())?;
-            self.state = PeerState::Established;
+        if let PeerState::OpenConfirm = self.peer.state {
+            self.protocol
+                .start_send(Message::Open(self.peer.create_open()))
+                .and_then(|_| self.protocol.poll_complete())?;
+            self.peer.state = PeerState::Established;
         }
 
         // Read new messages from the socket
-        while let Async::Ready(data) = self.messages.poll()? {
+        while let Async::Ready(data) = self.protocol.poll()? {
             if let Some(message) = data {
-                debug!("[{}] Received message {:?}", self.addr, message);
-                self.process_message(message)
+                debug!("[{}] Received message {:?}", self.peer.addr, message);
+                self.peer
+                    .process_message(message)
                     .and_then(|resp| {
                         if let Some(data) = resp {
-                            self.messages.start_send(data).ok();
+                            self.protocol.start_send(data).ok();
                         }
                         Ok(())
                     })
-                    .and_then(|_| self.messages.poll_complete())?;
+                    .and_then(|_| self.protocol.poll_complete())?;
+                self.update_last_message();
             } else {
-                // TODO: Update peer state
-                warn!("Peer disconnected: {}", self.addr);
+                warn!("Session ended with {}", self.peer);
+                // Before the Session is dropped, need to send the peer
+                // back to the peers HashMap.
+                // Create a default peer to replace self.peer
+                let mut peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
+                peer.update_state(PeerState::Idle);
+                self.channel
+                    .start_send(*peer)
+                    .and_then(|_| self.channel.poll_complete())
+                    .ok();
                 return Ok(Async::Ready(()));
             }
         }
@@ -206,22 +281,34 @@ impl Future for Peer {
     }
 }
 
-// impl Drop for Peer {
-//     fn drop(&mut self) {
-//         // TODO: Update Peer state
-//     }
-// }
+pub type Tx = mpsc::UnboundedSender<Peer>;
+pub type Rx = mpsc::UnboundedReceiver<Peer>;
 
-impl fmt::Display for Peer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "<Peer {} {} socket={} uptime={} last_message={}>",
-            self.remote_id,
-            self.state.to_string(),
-            self.addr,
-            self.connect_time.elapsed().as_secs(),
-            self.last_message.elapsed().as_secs(),
-        )
+pub struct Channel {
+    receiver: Rx,
+    sender: Tx,
+}
+
+impl Channel {
+    pub fn new() -> Channel {
+        let (sender, receiver) = mpsc::unbounded();
+        Channel { receiver, sender }
+    }
+
+    pub fn add_sender(&self) -> Tx {
+        self.sender.clone()
+    }
+}
+
+impl Future for Channel {
+    type Item = Peer;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Error> {
+        // Check for peers returned from ended Session
+        if let Async::Ready(Some(peer)) = self.receiver.poll().unwrap() {
+            return Ok(Async::Ready(peer));
+        }
+        Ok(Async::NotReady)
     }
 }

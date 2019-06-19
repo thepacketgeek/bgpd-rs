@@ -56,7 +56,7 @@ fn main() -> Result<()> {
         .unwrap_or("127.0.0.1")
         .parse()
         .expect("Must specify a valid IP Address");
-    let port: u32 = matches
+    let port: u16 = matches
         .value_of("port")
         .unwrap_or("179")
         .parse()
@@ -77,9 +77,6 @@ fn main() -> Result<()> {
     let config = ServerConfig::from_file(&config_path)?;
     debug!("Found {} peers in {}", config.peers.len(), config_path);
 
-    // TODO, setup Server like this
-    // let server = Server(config);
-    // server.serve(addr, port)?;
     serve(addr, port, config)?;
 
     Ok(())

@@ -12,9 +12,9 @@ Totally just a POC, mostly for my own amusement
 - [x] Parse OPEN, save capabilities
 - [x] Send OPEN with capabilities 
 - [x] Receive and respond to Keepalives
+- [x] Attempt connection to unestablished peers
 - [ ] Process UPDATE messagess, parsing with capabilities
 - [ ] Store received routes locally
-- [ ] Attempt connection to unestablished peers
 - [ ] Advertise routes (specified somewhere?)
 - [ ] API/CLI interface for viewing peer status, routes, etc.
 
@@ -34,9 +34,18 @@ process announce-routes {
 
 neighbor 127.0.0.1 {
     router-id 2.2.2.2;
-    local-address 127.0.0.2;          # Our local update-source
-    local-as 65000;                    # Our local AS
-    peer-as 65000;                    # Peer's AS
+    local-address 127.0.0.2;
+    local-as 65000;
+    peer-as 65000;
+    # passive true;  // Uncomment to test active connections from bgpd
+
+    capability {
+        asn4 enable;
+    }
+    family {
+        ipv4 unicast;
+        ipv6 unicast;
+    }
 
     api {
       processes [announce-routes];
@@ -71,9 +80,9 @@ while True:
 Running the exabgp service with the command:
 
 ```
-$ env exabgp.tcp.port=1179 exabgp conf.ini -1
+$ env exabgp.tcp.port=1179 exabgp.tcp.bind="127.0.0.2" exabgp ./conf.ini --once
 ```
-> *-1 only attempts a single connection, auto-quits when session ends*
+> *--once only attempts a single connection, auto-quits when session ends*
 
 
 And then running `bgpd` as follows:

@@ -31,6 +31,18 @@ impl MessageCodec {
     pub fn set_capabilities(&mut self, capabilities: Capabilities) {
         self.capabilities = capabilities;
     }
+
+    fn get_reader<T>(&self, stream: T) -> Reader<T>
+    where
+        T: Read,
+    {
+        Reader::<T> {
+            stream,
+            capabilities: Capabilities {
+                ..self.capabilities
+            },
+        }
+    }
 }
 
 impl Decoder for MessageCodec {
@@ -40,12 +52,7 @@ impl Decoder for MessageCodec {
     // Look for a BGP message (preamble + length), using bgp-rs to decode each message
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Error> {
         if let Ok(range) = find_msg_range(&buf) {
-            let mut reader = Reader {
-                stream: &buf[range.start..range.stop],
-                capabilities: Capabilities {
-                    ..self.capabilities
-                },
-            };
+            let mut reader = self.get_reader(&buf[range.start..range.stop]);
             if let Ok((_header, message)) = reader.read() {
                 buf.advance(range.stop);
                 return Ok(Some(message));
@@ -133,12 +140,10 @@ fn encode_open(open: Open) -> Vec<u8> {
 }
 
 fn encode_keepalive() -> Vec<u8> {
-    let mut bytes: Vec<u8> = vec![];
-    bytes.extend_from_slice(&[4]); // type, Keepalive
-    prepend_preamble_and_length(bytes)
+    prepend_preamble_and_length(vec![4]) // type, Keepalive
 }
 
-pub fn capabilities_from_params(parameters: &Vec<OpenParameter>) -> (Capabilities, Option<u32>) {
+pub fn capabilities_from_params(parameters: &[OpenParameter]) -> (Capabilities, Option<u32>) {
     let mut asn_4_byte: Option<u32> = None;
     let mut capabilities = Capabilities {
         FOUR_OCTET_ASN_SUPPORT: false,
