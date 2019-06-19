@@ -53,16 +53,17 @@ pub enum PeerState {
     Established,
 }
 
-impl std::string::ToString for PeerState {
-    fn to_string(&self) -> String {
-        match self {
-            PeerState::Connect { .. } => "Connect".to_string(),
-            PeerState::Active => "Active".to_string(),
-            PeerState::Idle => "Idle".to_string(),
-            PeerState::OpenSent { .. } => "OpenSent".to_string(),
-            PeerState::OpenConfirm { .. } => "OpenConfirm".to_string(),
-            PeerState::Established { .. } => "Established".to_string(),
-        }
+impl fmt::Display for PeerState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let word = match self {
+            PeerState::Connect { .. } => "Connect",
+            PeerState::Active => "Active",
+            PeerState::Idle => "Idle",
+            PeerState::OpenSent { .. } => "OpenSent",
+            PeerState::OpenConfirm { .. } => "OpenConfirm",
+            PeerState::Established { .. } => "Established",
+        };
+        write!(f, "{}", word)
     }
 }
 
@@ -81,7 +82,7 @@ impl fmt::Display for PeerIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "[{} | {}]",
+            "{}/{}",
             self.router_id
                 .unwrap_or("0.0.0.0".parse::<IpAddr>().unwrap()),
             asn_to_dotted(self.asn)
@@ -113,7 +114,7 @@ impl Peer {
 
     pub fn update_state(&mut self, new_state: PeerState) {
         debug!(
-            "[{}] went from {} to {}",
+            "{} went from {} to {}",
             self.addr,
             self.state.to_string(),
             new_state.to_string()
