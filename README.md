@@ -12,9 +12,9 @@ Totally just a POC, mostly for my own amusement
 - [x] Parse OPEN, save capabilities
 - [x] Send OPEN with capabilities 
 - [x] Receive and respond to Keepalives
+- [x] Attempt connection to unestablished peers
 - [ ] Process UPDATE messagess, parsing with capabilities
 - [ ] Store received routes locally
-- [ ] Attempt connection to unestablished peers
 - [ ] Advertise routes (specified somewhere?)
 - [ ] API/CLI interface for viewing peer status, routes, etc.
 
