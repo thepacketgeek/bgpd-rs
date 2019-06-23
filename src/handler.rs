@@ -16,7 +16,8 @@ use tokio::timer::Interval;
 
 use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::ServerConfig;
-use crate::peer::{Channel, Peer, PeerIdentifier, PeerState, Session, Tx};
+use crate::peer::{Peer, PeerIdentifier, PeerState};
+use crate::session::{Channel, Session, Tx};
 
 type Peers = HashMap<IpAddr, Peer>;
 
@@ -110,8 +111,8 @@ fn connect_to_peer(
 }
 
 pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error> {
-    let socket = format!("{}:{}", addr, port);
-    let listener = TcpListener::bind(&socket.parse().unwrap())?;
+    let socket = SocketAddr::from((addr, port));
+    let listener = TcpListener::bind(&socket)?;
     let mut runtime = Runtime::new().unwrap();
 
     let channel = Channel::new();
@@ -172,7 +173,10 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                 .map(|peers| {
                     peers
                         .iter()
-                        .filter(|(_, p)| p.is_passive() == false)
+                        // Non-passive peers only
+                        .filter(|(_, p)| !p.is_passive())
+                        // Peers accessible over same IP version this server is bound to
+                        .filter(|(_, p)| addr.is_ipv4() == p.addr.is_ipv4())
                         .map(|(_, p)| p.addr)
                         .collect()
                 })

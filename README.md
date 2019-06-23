@@ -33,8 +33,10 @@ process announce-routes {
 }
 
 neighbor 127.0.0.1 {
-    router-id 2.2.2.2;
+# neighbor ::1 {   # Can use IPv6 also
+    # local-address ::2;
     local-address 127.0.0.2;
+    router-id 2.2.2.2;
     local-as 65000;
     peer-as 65000;
     # passive true;  // Uncomment to test active connections from bgpd
@@ -87,6 +89,12 @@ $ env exabgp.tcp.port=1179 exabgp.tcp.bind="127.0.0.2" exabgp ./conf.ini --once
 
 And then running `bgpd` as follows:
 
+Using IPv6
 ```
-$ cargo run --  -p 1179 ./examples/config.toml -vv
+$ cargo run --  -a "::1" -p 1179 ./examples/config.toml -vv
+```
+
+or IPv4 (defaults to 127.0.0.1)
+```
+$ cargo run -- -p 1179 ./examples/config.toml -vv
 ```

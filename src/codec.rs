@@ -24,10 +24,6 @@ impl MessageCodec {
         }
     }
 
-    pub fn with_capabilities(capabilities: Capabilities) -> MessageCodec {
-        MessageCodec { capabilities }
-    }
-
     pub fn set_capabilities(&mut self, capabilities: Capabilities) {
         self.capabilities = capabilities;
     }
