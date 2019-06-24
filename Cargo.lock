@@ -42,7 +42,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "bgp-rs"
 version = "0.5.0"
-source = "git+https://github.com/thepacketgeek/bgp-rs?branch=message-attrs#ea9ff2c4e5f8f743c416d5ef6d62e2ebb89fa924"
+source = "git+https://github.com/thepacketgeek/bgp-rs?branch=message-attrs#64ef6b5581a356ae1b6cf1276a2e4c1bfd61b4e3"
 dependencies = [
  "byteorder 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

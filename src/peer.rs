@@ -88,9 +88,14 @@ impl Peer {
     }
 
     pub fn update_state(&mut self, new_state: PeerState) {
+        let label = if self.remote_id.router_id.is_some() {
+            format!("{}", self.remote_id)
+        } else {
+            format!("{}", self.addr)
+        };
         debug!(
             "{} went from {} to {}",
-            self.addr,
+            label,
             self.state.to_string(),
             new_state.to_string()
         );
@@ -106,8 +111,8 @@ impl Peer {
         );
         debug!(
             "[{}] Received OPEN {} [w/ {} params]",
-            peer_addr.ip(),
             remote_id,
+            peer_addr.ip(),
             open.parameters.len()
         );
         self.remote_id = remote_id;
@@ -150,14 +155,17 @@ impl Peer {
     }
 
     pub fn process_message(&mut self, message: Message) -> Result<Option<Message>, Error> {
-        trace!("{}: {:?}", self.addr, message);
+        trace!("{}: {:?}", self.remote_id, message);
         let response = match message {
             Message::KeepAlive => Some(Message::KeepAlive),
             Message::Update(_) => None,
-            Message::Notification => None,
+            Message::Notification(notification) => {
+                warn!("{} NOTIFICATION: {}", self.remote_id, notification);
+                None
+            }
             Message::RouteRefresh(_) => None,
             _ => {
-                warn!("{} Unexpected message {:?}", self.addr, message);
+                warn!("{} Unexpected message {:?}", self.remote_id, message);
                 return Err(Error::from(ErrorKind::InvalidInput));
             }
         };

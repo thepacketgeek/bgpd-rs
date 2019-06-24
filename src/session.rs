@@ -1,9 +1,10 @@
-use futures::sync::mpsc;
 use std::fmt;
 use std::io::Error;
 use std::time::Instant;
 
 use bgp_rs::Message;
+use futures::sync::mpsc;
+use futures::{Async, Poll, Stream};
 use log::{debug, trace, warn};
 use tokio::prelude::*;
 
@@ -14,7 +15,7 @@ pub type Tx = mpsc::UnboundedSender<Peer>;
 pub type Rx = mpsc::UnboundedReceiver<Peer>;
 
 pub struct Channel {
-    receiver: Rx,
+    pub receiver: Rx,
     sender: Tx,
 }
 
@@ -36,9 +37,10 @@ impl Future for Channel {
     fn poll(&mut self) -> Poll<Self::Item, Error> {
         // Check for peers returned from ended Session
         if let Async::Ready(Some(peer)) = self.receiver.poll().unwrap() {
-            return Ok(Async::Ready(peer));
+            Ok(Async::Ready(peer))
+        } else {
+            Ok(Async::NotReady)
         }
-        Ok(Async::NotReady)
     }
 }
 
@@ -77,7 +79,6 @@ impl fmt::Display for Session {
         )
     }
 }
-
 
 /// This is where a connected peer is managed.
 ///
@@ -134,5 +135,3 @@ impl Future for Session {
         Ok(Async::NotReady)
     }
 }
-
-

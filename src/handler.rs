@@ -194,20 +194,16 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     // channel. Poll the channel and add back to the idle Peers container.
     let peer_poller = {
         let peers = peers.clone();
-        channel
-            .into_future()
-            .and_then(move |peer| {
-                debug!("Adding {} back to idle peers", peer);
-                peers
-                    .lock()
-                    .map(|mut peers| {
-                        peers.insert(peer.addr, peer);
-                    })
-                    .ok();
-                future::ok(())
-            })
-            .map(|_| ())
-            .map_err(|_| ())
+        channel.receiver.for_each(move |peer| {
+            debug!("Adding {} back to idle peers", peer);
+            peers
+                .lock()
+                .map(|mut peers| {
+                    peers.insert(peer.addr, peer);
+                })
+                .ok();
+            future::ok(())
+        })
     };
     runtime.spawn(peer_poller);
 
