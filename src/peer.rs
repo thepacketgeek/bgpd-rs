@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
@@ -60,6 +61,7 @@ pub struct Peer {
     local_id: PeerIdentifier, // Server (local side) ID
     state: PeerState,
     passive: bool,
+    hold_timer: u16,
 }
 
 impl Peer {
@@ -69,6 +71,7 @@ impl Peer {
         remote_id: PeerIdentifier,
         local_id: PeerIdentifier,
         passive: bool,
+        hold_timer: u16,
     ) -> Peer {
         Peer {
             addr,
@@ -76,6 +79,7 @@ impl Peer {
             remote_id,
             local_id,
             passive,
+            hold_timer,
         }
     }
 
@@ -102,13 +106,18 @@ impl Peer {
         self.state = new_state;
     }
 
-    pub fn open_received(&mut self, open: Open, mut protocol: MessageProtocol) -> MessageProtocol {
+    pub fn open_received(
+        &mut self,
+        open: Open,
+        mut protocol: MessageProtocol,
+    ) -> (MessageProtocol, u16) {
         let peer_addr = protocol.get_ref().peer_addr().unwrap();
         let (capabilities, remote_asn) = capabilities_from_params(&open.parameters);
         let remote_id = PeerIdentifier::new(
             Some(IpAddr::from(transform_u32_to_bytes(open.identifier))),
             remote_asn.unwrap_or_else(|| u32::from(open.peer_asn)),
         );
+        let hold_timer = cmp::min(open.hold_timer, self.hold_timer);
         debug!(
             "[{}] Received OPEN {} [w/ {} params]",
             remote_id,
@@ -118,7 +127,7 @@ impl Peer {
         self.remote_id = remote_id;
         protocol.codec_mut().set_capabilities(capabilities);
         self.update_state(PeerState::OpenConfirm);
-        protocol
+        (protocol, hold_timer)
     }
 
     pub fn create_open(&self) -> Open {
@@ -129,7 +138,7 @@ impl Peer {
         Open {
             version: 4,
             peer_asn: self.local_id.asn as u16,
-            hold_timer: 180,
+            hold_timer: self.hold_timer,
             identifier: as_u32_be(router_id.octets()),
             parameters: vec![
                 OpenParameter {
@@ -182,6 +191,7 @@ impl Default for Peer {
             PeerIdentifier::new(Some(ip), 0),
             PeerIdentifier::new(Some(ip), 0),
             false,
+            0,
         )
     }
 }

@@ -6,8 +6,16 @@ use log::debug;
 use serde_derive::Deserialize;
 use toml;
 
-fn default_passive() -> bool {
-    false
+struct Defaults {}
+
+impl Defaults {
+    fn passive() -> bool {
+        false
+    }
+
+    fn hold_timer() -> u16 {
+        180
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -19,9 +27,13 @@ pub struct PeerConfig {
 
     // Only listen to incoming TCP sessions for passive peers
     // And don't attempt outbound TCP connections
-    // Default == false
-    #[serde(default = "default_passive")]
+    #[serde(default = "Defaults::passive")]
     pub passive: bool,
+
+    // Timer to keep peers active
+    // Will send keepalives every 1/3rd of this value
+    #[serde(default = "Defaults::hold_timer")]
+    pub hold_timer: u16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,13 +64,14 @@ mod tests {
         let config = ServerConfig::from_file("./examples/config.toml").unwrap();
         assert_eq!(config.router_id, IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)));
         assert_eq!(config.default_as, 65000);
-        assert_eq!(config.peers.len(), 2);
+        assert_eq!(config.peers.len(), 3);
         let peer = config
             .peers
             .iter()
             .find(|p| p.remote_ip == IpAddr::from(Ipv4Addr::new(127, 0, 0, 2)))
             .unwrap();
         assert_eq!(peer.local_as, Some(65000));
+        assert_eq!(peer.hold_timer, 180);
         assert!(!peer.passive);
     }
 }

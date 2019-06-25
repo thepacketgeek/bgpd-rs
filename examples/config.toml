@@ -16,3 +16,5 @@ local_as = 65000
 remote_ip = "::2"
 remote_as = 65000
 local_as = 65000
+passive = true
+hold_timer = 30

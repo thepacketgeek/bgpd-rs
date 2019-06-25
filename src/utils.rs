@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 pub fn transform_u8_to_bytes(x: u8) -> [u8; 1] {
     let b1: u8 = x as u8;
     [b1]
@@ -41,6 +43,18 @@ pub fn asn_to_dotted(asn: u32) -> String {
     }
 }
 
+fn fit_with_remainder(dividend: u64, divisor: u64) -> (u64, u64) {
+    let fit = dividend / divisor;
+    let remainder = dividend % divisor;
+    (fit, remainder)
+}
+
+pub fn format_elapsed_time(elapsed: Duration) -> String {
+    let (hours, remainder) = fit_with_remainder(elapsed.as_secs(), 3600);
+    let (minutes, seconds) = fit_with_remainder(remainder, 60);
+    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,6 +93,22 @@ mod tests {
     fn test_asn_to_dotted() {
         assert_eq!(asn_to_dotted(100), "100".to_string());
         assert_eq!(asn_to_dotted(4259840100), "65000.100".to_string());
+    }
+
+    #[test]
+    fn test_format_elapsed_time() {
+        assert_eq!(
+            format_elapsed_time(Duration::from_secs(30)),
+            "00:00:30".to_string()
+        );
+        assert_eq!(
+            format_elapsed_time(Duration::from_secs(301)),
+            "00:05:01".to_string()
+        );
+        assert_eq!(
+            format_elapsed_time(Duration::from_secs(32768)),
+            "09:06:08".to_string()
+        );
     }
 
 }

@@ -32,8 +32,8 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: T
             if let Some(mut peer) = peers.lock().unwrap().remove(&peer_addr) {
                 peer.update_state(PeerState::OpenSent);
                 if let Some(Message::Open(open)) = open {
-                    let updated_protocol = peer.open_received(open, protocol);
-                    let new_session = Session::new(peer, updated_protocol, channel);
+                    let (updated_protocol, hold_timer) = peer.open_received(open, protocol);
+                    let new_session = Session::new(peer, updated_protocol, channel, hold_timer);
                     return Either::B(new_session);
                 } else {
                     warn!("Invalid first packet received");
@@ -44,6 +44,7 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: T
             }
             Either::A(future::ok(()))
         })
+        .map(|item| println!("item {:?}", item))
         .map_err(|e| {
             error!("connection error = {}", e);
         });
@@ -132,6 +133,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                     p.local_as.unwrap_or(config.default_as),
                 ), // local
                 p.passive,
+                p.hold_timer,
             );
             (peer.addr, peer)
         })
@@ -180,7 +182,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                         .map(|(_, p)| p.addr)
                         .collect()
                 })
-                .unwrap_or(vec![]);
+                .unwrap_or_else(|_| vec![]);
             for peer_addr in idle_peers {
                 connect_to_peer(peer_addr, addr, port, peers.clone(), sender.clone());
             }
