@@ -1,4 +1,4 @@
-# BGPd
+# BGPd-rs
 
 BGP service daemon built in Rust
 
