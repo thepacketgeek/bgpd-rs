@@ -21,12 +21,12 @@ pub enum PeerState {
 impl fmt::Display for PeerState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let word = match self {
-            PeerState::Connect { .. } => "Connect",
+            PeerState::Connect => "Connect",
             PeerState::Active => "Active",
             PeerState::Idle => "Idle",
-            PeerState::OpenSent { .. } => "OpenSent",
-            PeerState::OpenConfirm { .. } => "OpenConfirm",
-            PeerState::Established { .. } => "Established",
+            PeerState::OpenSent => "OpenSent",
+            PeerState::OpenConfirm => "OpenConfirm",
+            PeerState::Established => "Established",
         };
         write!(f, "{}", word)
     }

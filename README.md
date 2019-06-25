@@ -18,6 +18,27 @@ Totally just a POC, mostly for my own amusement
 - [ ] Advertise routes (specified somewhere?)
 - [ ] API/CLI interface for viewing peer status, routes, etc.
 
+# Peer config
+Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
+
+Details of config values:
+```
+router_id = "1.1.1.1"       # Default Router ID for the service
+default_as = 65000          # Used as the local-as if `local_as` is not defined for a peer
+
+[[peers]]
+remote_ip = "127.0.0.2"     # This can also be an IPv6 address, see next peer
+remote_as = 65000
+passive = true              # If passive, bgpd won't attempt outbound connections
+router_id = "127.0.0.1"     # Can override local Router ID for this peer
+hold_timer = 90             # Set the hold timer for the peer, defaults to 180 seconds
+
+[[peers]]
+remote_ip = "::2"
+remote_as = 65000
+local_as = 100
+```
+
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
 - Here's an [intro article](https://thepacketgeek.com/influence-routing-decisions-with-python-and-exabgp/) about installing & getting started with ExaBGP.
@@ -97,4 +118,11 @@ $ cargo run --  -a "::1" -p 1179 ./examples/config.toml -vv
 or IPv4 (defaults to 127.0.0.1)
 ```
 $ cargo run -- -p 1179 ./examples/config.toml -vv
+```
+
+You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
+
+```
+$ cargo build
+$ sudo ./targets/debug ./examples/config.toml -vv
 ```

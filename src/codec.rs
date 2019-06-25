@@ -34,9 +34,7 @@ impl MessageCodec {
     {
         Reader::<T> {
             stream,
-            capabilities: Capabilities {
-                ..self.capabilities
-            },
+            capabilities: self.capabilities,
         }
     }
 }
