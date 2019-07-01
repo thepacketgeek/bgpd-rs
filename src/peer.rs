@@ -1,4 +1,5 @@
 use std::cmp;
+use std::convert::From;
 use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
@@ -7,8 +8,10 @@ use bgp_rs::{Message, Open, OpenParameter};
 use log::{debug, trace, warn};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
+use crate::display::StatusRow;
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
+#[derive(Debug, Copy, Clone)]
 pub enum PeerState {
     Connect,
     Active,
@@ -32,6 +35,7 @@ impl fmt::Display for PeerState {
     }
 }
 
+#[derive(Debug)]
 pub struct PeerIdentifier {
     pub router_id: Option<IpAddr>,
     pub asn: u32,
@@ -55,9 +59,10 @@ impl fmt::Display for PeerIdentifier {
     }
 }
 
+#[derive(Debug)]
 pub struct Peer {
     pub addr: IpAddr,
-    remote_id: PeerIdentifier,
+    pub remote_id: PeerIdentifier,
     local_id: PeerIdentifier, // Server (local side) ID
     state: PeerState,
     passive: bool,
@@ -87,8 +92,8 @@ impl Peer {
         self.passive
     }
 
-    pub fn get_state(&self) -> &PeerState {
-        &self.state
+    pub fn get_state(&self) -> PeerState {
+        self.state
     }
 
     pub fn update_state(&mut self, new_state: PeerState) {
@@ -205,5 +210,48 @@ impl fmt::Display for Peer {
             self.remote_id,
             self.state.to_string(),
         )
+    }
+}
+
+impl From<&Peer> for StatusRow {
+    fn from(peer: &Peer) -> Self {
+        StatusRow {
+            neighbor: peer.addr,
+            asn: peer.remote_id.asn,
+            msg_received: 0,
+            msg_sent: 0,
+            connect_time: None,
+            state: peer.state,
+            prefixes_received: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct MessageCounts {
+    received: u64,
+    sent: u64,
+}
+
+impl MessageCounts {
+    pub fn new() -> Self {
+        MessageCounts {
+            received: 0,
+            sent: 0,
+        }
+    }
+
+    pub fn received(&self) -> u64 {
+        self.received
+    }
+    pub fn increment_received(&mut self) {
+        self.received += 1;
+    }
+
+    pub fn sent(&self) -> u64 {
+        self.sent
+    }
+    pub fn increment_sent(&mut self) {
+        self.sent += 1;
     }
 }

@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Result};
 use std::net::IpAddr;
+use std::path;
 
 use log::debug;
 use serde_derive::Deserialize;
@@ -40,6 +41,7 @@ pub struct PeerConfig {
 pub struct ServerConfig {
     pub router_id: IpAddr,
     pub default_as: u32,
+    pub output_dir: path::PathBuf,
     pub peers: Vec<PeerConfig>,
 }
 
@@ -51,6 +53,12 @@ impl ServerConfig {
         let config: ServerConfig = toml::from_str(&contents).unwrap();
         debug!("Using config: {:?}", config);
         Ok(config)
+    }
+
+    /// Get the path for the peers status output
+    /// Derived from the root `output_dir`
+    pub fn path_for_peers(&self) -> String {
+        format!("{}", self.output_dir.join("bgpd.peers").to_str().unwrap())
     }
 }
 
@@ -73,5 +81,11 @@ mod tests {
         assert_eq!(peer.local_as, Some(65000));
         assert_eq!(peer.hold_timer, 180);
         assert!(!peer.passive);
+    }
+
+    #[test]
+    fn test_path_for_peers() {
+        let config = ServerConfig::from_file("./examples/config.toml").unwrap();
+        assert_eq!(config.path_for_peers(), String::from("./bgpd.peers"));
     }
 }

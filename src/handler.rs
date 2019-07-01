@@ -16,6 +16,7 @@ use tokio::timer::Interval;
 
 use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::ServerConfig;
+use crate::display::{StatusRow, StatusTable};
 use crate::peer::{Peer, PeerIdentifier, PeerState};
 use crate::session::{Channel, Session, Tx};
 
@@ -24,9 +25,24 @@ type Peers = HashMap<IpAddr, Peer>;
 /// Receives a TcpStream from either an incoming connection or active polling,
 /// and processes the OPEN message for the correct peer (if configured)
 fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: Tx) {
+    let peer_insert = {
+        let peers = peers.clone();
+        move |peer: Option<Peer>| {
+            if let Some(peer) = peer {
+                debug!("Adding {} back to idle peers", peer);
+                peers
+                    .lock()
+                    .map(|mut peers| {
+                        peers.insert(peer.addr, peer);
+                    })
+                    .ok();
+            }
+        }
+    };
+
     let connection = MessageProtocol::new(stream, MessageCodec::new())
         .into_future()
-        .map_err(|(e, _)| e)
+        .map_err(|(e, _)| e.into())
         .and_then(move |(open, protocol)| {
             let peer_addr = protocol.get_ref().peer_addr().unwrap().ip();
             if let Some(mut peer) = peers.lock().unwrap().remove(&peer_addr) {
@@ -34,20 +50,17 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: T
                 if let Some(Message::Open(open)) = open {
                     let (updated_protocol, hold_timer) = peer.open_received(open, protocol);
                     let new_session = Session::new(peer, updated_protocol, channel, hold_timer);
-                    return Either::B(new_session);
+                    return Either::B(Some(new_session));
                 } else {
                     warn!("Invalid first packet received");
-                    return Either::A(future::ok(()));
                 }
             } else {
                 warn!("Unexpected connection from {}", peer_addr,);
             }
-            Either::A(future::ok(()))
+            Either::A(future::ok(None))
         })
-        .map(|item| println!("item {:?}", item))
-        .map_err(|e| {
-            error!("connection error = {}", e);
-        });
+        .map(peer_insert)
+        .map_err(|e| error!("{}", e));
     tokio::spawn(connection);
 }
 
@@ -192,22 +205,56 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     };
     runtime.spawn(connect);
 
-    // When sessions are dropped, they will send peers back over the
-    // channel. Poll the channel and add back to the idle Peers container.
-    let peer_poller = {
-        let peers = peers.clone();
-        channel.receiver.for_each(move |peer| {
-            debug!("Adding {} back to idle peers", peer);
-            peers
+    let session_status: Arc<Mutex<HashMap<IpAddr, StatusRow>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    // Poll the channel for Session status updates
+    let session_poller = {
+        let session_status = session_status.clone();
+        channel.receiver.for_each(move |session| {
+            // debug!("Got row from {} back to idle peers", peer);
+            session_status
                 .lock()
-                .map(|mut peers| {
-                    peers.insert(peer.addr, peer);
+                .map(|mut sessions| {
+                    if let Some(row) = session.status {
+                        sessions.insert(session.addr, row);
+                    } else {
+                        sessions.remove(&session.addr);
+                    }
                 })
                 .ok();
             future::ok(())
         })
     };
-    runtime.spawn(peer_poller);
+    runtime.spawn(session_poller);
+
+    // TCP Connections outbound
+    // Attempt to connect to configured & idle peers
+    let peers_path = config.path_for_peers();
+    let output = {
+        let peers = peers.clone();
+        let session_status = session_status.clone();
+        Interval::new(Instant::now(), Duration::from_secs(1))
+            .for_each(move |_| {
+                let mut table = StatusTable::new();
+                for (_, session) in session_status.lock().unwrap().iter() {
+                    table.add_row(session);
+                }
+                for (_, peer) in peers.lock().unwrap().iter() {
+                    table.add_row(&StatusRow::from(peer));
+                }
+                table.write(&peers_path);
+                Ok(())
+            })
+            .map_err(|e| error!("Error writing session info: {:?}", e))
+    };
+    runtime.spawn(output);
+
+    ctrlc::set_handler(move || {
+        info!("Stopping BGP server...");
+        StatusTable::new().write(&config.path_for_peers());
+        std::process::exit(0);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     runtime.shutdown_on_idle().wait().unwrap();
     Ok(())

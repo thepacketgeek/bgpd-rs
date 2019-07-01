@@ -1,5 +1,6 @@
 use std::fmt;
 use std::io::Error;
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
@@ -9,11 +10,23 @@ use log::{debug, trace, warn};
 use tokio::prelude::*;
 
 use crate::codec::MessageProtocol;
-use crate::peer::{Peer, PeerState};
+use crate::display::StatusRow;
+use crate::peer::{MessageCounts, Peer, PeerState};
 use crate::utils::format_elapsed_time;
 
-pub type Tx = mpsc::UnboundedSender<Peer>;
-pub type Rx = mpsc::UnboundedReceiver<Peer>;
+pub struct SessionStatus {
+    pub addr: IpAddr,
+    pub status: Option<StatusRow>,
+}
+
+impl SessionStatus {
+    pub fn new(addr: IpAddr, status: Option<StatusRow>) -> Self {
+        SessionStatus { addr, status }
+    }
+}
+
+pub type Tx = mpsc::UnboundedSender<SessionStatus>;
+pub type Rx = mpsc::UnboundedReceiver<SessionStatus>;
 
 pub struct Channel {
     pub receiver: Rx,
@@ -32,13 +45,13 @@ impl Channel {
 }
 
 impl Future for Channel {
-    type Item = Peer;
+    type Item = SessionStatus;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Error> {
-        // Check for peers returned from ended Session
-        if let Async::Ready(Some(peer)) = self.receiver.poll().unwrap() {
-            Ok(Async::Ready(peer))
+        // Check for status rows returned from Session
+        if let Async::Ready(Some(status)) = self.receiver.poll().unwrap() {
+            Ok(Async::Ready(status))
         } else {
             Ok(Async::NotReady)
         }
@@ -113,16 +126,21 @@ pub struct Session {
     connect_time: Instant,
     channel: Tx,
     hold_timer: HoldTimer,
+    counts: MessageCounts,
 }
 
 impl Session {
     pub fn new(peer: Peer, protocol: MessageProtocol, channel: Tx, hold_timer: u16) -> Session {
+        let mut counts = MessageCounts::new();
+        // Somewhat hacky, but this counts for
+        counts.increment_received();
         Session {
             peer: Box::new(peer),
             protocol,
             connect_time: Instant::now(),
             channel,
             hold_timer: HoldTimer::new(hold_timer),
+            counts: counts,
         }
     }
 
@@ -132,18 +150,20 @@ impl Session {
         self.protocol
             .start_send(message)
             .and_then(|_| self.protocol.poll_complete())?;
+        self.counts.increment_sent();
         Ok(())
     }
 
     // Send the peer back to the Idle Peers HashMap via the send channel
     // In order to do that, replace the session peer with an empty Peer struct
-    fn replace_peer(&mut self) {
-        let mut peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
-        peer.update_state(PeerState::Idle);
+    fn replace_peer(&mut self) -> Peer {
         self.channel
-            .start_send(*peer)
+            .start_send(SessionStatus::new(self.peer.addr, None))
             .and_then(|_| self.channel.poll_complete())
             .ok();
+        let mut peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
+        peer.update_state(PeerState::Idle);
+        *peer
     }
 }
 
@@ -169,48 +189,104 @@ impl fmt::Display for Session {
 ///
 /// TODO: Session polls, updating it's peer status
 impl Future for Session {
-    type Item = ();
-    type Error = Error;
+    type Item = Peer;
+    type Error = SessionError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         trace!("Polling {}", self);
 
         if let PeerState::OpenConfirm = self.peer.get_state() {
-            self.send_message(Message::Open(self.peer.create_open()))?;
+            self.send_message(Message::Open(self.peer.create_open()))
+                .map_err(|e| SessionError {
+                    error: e,
+                    peer: Some(self.replace_peer()),
+                })
+                .ok();
             self.peer.update_state(PeerState::Established);
         }
 
         // Read new messages from the socket
-        while let Async::Ready(data) = self.protocol.poll()? {
+        while let Ok(Async::Ready(data)) = self.protocol.poll() {
             if let Some(message) = data {
                 debug!("[{}] Incoming: {:?}", self.peer.addr, message);
-                self.peer.process_message(message).and_then(|resp| {
-                    if let Some(data) = resp {
-                        self.send_message(data)?;
-                    }
-                    Ok(())
-                })?;
+                self.counts.increment_received();
+                self.peer
+                    .process_message(message)
+                    .and_then(|resp| {
+                        if let Some(data) = resp {
+                            self.send_message(data)?;
+                        }
+                        Ok(())
+                    })
+                    .map_err(|e| SessionError {
+                        error: e,
+                        peer: Some(self.replace_peer()),
+                    })
+                    .ok();
                 self.hold_timer.received_update();
             } else {
                 warn!("Session ended with {}", self.peer);
                 // Before the Session is dropped, send peer back to idle peers
-                self.replace_peer();
-                return Ok(Async::Ready(()));
+                let peer = self.replace_peer();
+                return Ok(Async::Ready(peer));
             }
         }
 
         // Check for hold time expiration (send keepalive if not expired)
-        while let Async::Ready(_) = self.hold_timer.poll()? {
+        while let Ok(Async::Ready(_)) = self.hold_timer.poll() {
             if self.hold_timer.get_hold_time() == Duration::from_secs(0) {
                 trace!("Hold Time Expired [{}]: {}", self.hold_timer, self.peer);
-                self.replace_peer();
-                return Ok(Async::Ready(()));
+                let peer = self.replace_peer();
+                return Ok(Async::Ready(peer));
             } else if self.hold_timer.should_send_keepalive() {
-                self.send_message(Message::KeepAlive)?;
+                self.send_message(Message::KeepAlive)
+                    .map_err(|e| SessionError {
+                        error: e,
+                        peer: Some(self.replace_peer()),
+                    })
+                    .ok();
             }
         }
 
+        self.channel
+            .start_send(SessionStatus::new(
+                self.peer.addr,
+                Some(StatusRow {
+                    neighbor: self.peer.addr,
+                    asn: self.peer.remote_id.asn,
+                    msg_received: self.counts.received(),
+                    msg_sent: self.counts.sent(),
+                    connect_time: Some(self.connect_time),
+                    state: self.peer.get_state(),
+                    prefixes_received: 0,
+                }),
+            ))
+            .and_then(|_| self.channel.poll_complete())
+            .ok();
         trace!("Finished polling {}", self);
         Ok(Async::NotReady)
+    }
+}
+
+#[derive(Debug)]
+pub struct SessionError {
+    pub error: Error,
+    pub peer: Option<Peer>,
+}
+
+impl fmt::Display for SessionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let peer = if let Some(peer) = &self.peer {
+            format!("{}", peer)
+        } else {
+            "No Peer".to_string()
+        };
+        write!(f, "Session Error: {:?}: {}", self.error, peer)
+    }
+}
+
+impl From<Error> for SessionError {
+    fn from(error: Error) -> Self {
+        SessionError { error, peer: None }
     }
 }

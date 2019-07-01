@@ -39,6 +39,20 @@ remote_as = 65000
 local_as = 100
 ```
 
+# View Peer Summary
+By default the peer session summary is output to `.\bgp.peers`. You can view current peer session status via this file:
+
+```
+[~/bgpd-rs/] $ cat ./bgpd.peers
+Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
+ ::0.0.0.2    65000  6        3        00:00:11  Established  0
+ 127.0.0.2    65000  0        0        ---       Idle         0
+ 172.16.20.1  65000  0        0        ---       Idle         0
+ 127.0.0.3    65000  0        0        ---       Idle         0
+```
+
+ > Tip: Use the `watch` command for keeping this view up-to-date
+
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
 - Here's an [intro article](https://thepacketgeek.com/influence-routing-decisions-with-python-and-exabgp/) about installing & getting started with ExaBGP.
