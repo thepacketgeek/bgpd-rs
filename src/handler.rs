@@ -16,7 +16,8 @@ use tokio::timer::Interval;
 
 use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::ServerConfig;
-use crate::display::{StatusRow, StatusTable};
+use crate::db::{Route, RouteDB};
+use crate::display::{OutputTable, StatusRow};
 use crate::peer::{Peer, PeerIdentifier, PeerState};
 use crate::session::{Channel, Session, Tx};
 
@@ -211,7 +212,6 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     let session_poller = {
         let session_status = session_status.clone();
         channel.receiver.for_each(move |session| {
-            // debug!("Got row from {} back to idle peers", peer);
             session_status
                 .lock()
                 .map(|mut sessions| {
@@ -230,19 +230,30 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     // TCP Connections outbound
     // Attempt to connect to configured & idle peers
     let peers_path = config.path_for_peers();
+    let learned_routes_path = config.path_for_learned_routes();
     let output = {
         let peers = peers.clone();
         let session_status = session_status.clone();
         Interval::new(Instant::now(), Duration::from_secs(1))
             .for_each(move |_| {
-                let mut table = StatusTable::new();
+                let mut status_table = OutputTable::new();
                 for (_, session) in session_status.lock().unwrap().iter() {
-                    table.add_row(session);
+                    status_table.add_row(session);
                 }
                 for (_, peer) in peers.lock().unwrap().iter() {
-                    table.add_row(&StatusRow::from(peer));
+                    status_table.add_row(&StatusRow::from(peer));
                 }
-                table.write(&peers_path);
+                status_table.write(&peers_path);
+
+                // Print out current routes
+                let mut route_table = OutputTable::new();
+                let results = RouteDB::new()
+                    .and_then(|db| db.get_all_routes())
+                    .unwrap_or_else(|_| vec![]);
+                for route in results {
+                    route_table.add_row(&route);
+                }
+                route_table.write(&learned_routes_path);
                 Ok(())
             })
             .map_err(|e| error!("Error writing session info: {:?}", e))
@@ -251,7 +262,11 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
 
     ctrlc::set_handler(move || {
         info!("Stopping BGP server...");
-        StatusTable::new().write(&config.path_for_peers());
+        // Reset Output Files
+        OutputTable::<StatusRow>::new().write(&config.path_for_peers());
+        OutputTable::<Route>::new().write(&config.path_for_learned_routes());
+        // Remove RouteDB
+        std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting RouteDB");
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");

@@ -1,58 +1,71 @@
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
+use std::marker::PhantomData;
 use std::net::IpAddr;
 use std::time::Instant;
 
 use prettytable::{cell, format, row, Row, Table};
 
 use crate::peer::PeerState;
-use crate::utils::{asn_to_dotted, format_elapsed_time};
+use crate::utils::{asn_to_dotted, format_elapsed_time, maybe_string};
+
+pub trait ToRow {
+    fn columns() -> Row;
+    fn to_row(&self) -> Row;
+}
 
 pub struct StatusRow {
     pub neighbor: IpAddr,
     pub asn: u32,
-    pub msg_received: u64,
-    pub msg_sent: u64,
+    pub msg_received: Option<u64>,
+    pub msg_sent: Option<u64>,
     pub connect_time: Option<Instant>,
     pub state: PeerState,
-    pub prefixes_received: u64,
+    pub prefixes_received: Option<u64>,
 }
 
-impl StatusRow {
-    pub fn columns() -> Row {
+impl ToRow for StatusRow {
+    fn columns() -> Row {
         row!["Neighbor", "AS", "MsgRcvd", "MsgSent", "Uptime", "State", "PfxRcd"]
     }
 
-    pub fn to_row(&self) -> Row {
+    fn to_row(&self) -> Row {
         row![
             self.neighbor.to_string(),
             asn_to_dotted(self.asn),
-            self.msg_received.to_string(),
-            self.msg_sent.to_string(),
+            maybe_string(self.msg_received.as_ref()),
+            maybe_string(self.msg_sent.as_ref()),
             if let Some(connect_time) = self.connect_time {
                 format_elapsed_time(connect_time.elapsed())
             } else {
                 String::from("---")
             },
             self.state.to_string(),
-            self.prefixes_received.to_string(),
+            maybe_string(self.prefixes_received.as_ref()),
         ]
     }
 }
 
-pub struct StatusTable {
+pub struct OutputTable<T: ToRow> {
     inner: Table,
+    row_type: PhantomData<T>,
 }
 
-impl StatusTable {
+impl<T> OutputTable<T>
+where
+    T: ToRow,
+{
     pub fn new() -> Self {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_CLEAN);
-        table.add_row(StatusRow::columns());
-        StatusTable { inner: table }
+        table.add_row(T::columns());
+        Self {
+            inner: table,
+            row_type: PhantomData,
+        }
     }
 
-    pub fn add_row(&mut self, row: &StatusRow) {
+    pub fn add_row(&mut self, row: &T) {
         self.inner.add_row(row.to_row());
     }
 

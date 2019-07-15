@@ -55,6 +55,14 @@ pub fn format_elapsed_time(elapsed: Duration) -> String {
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }
 
+pub fn maybe_string<T>(item: Option<&T>) -> String
+where
+    T: ToString,
+{
+    item.map(std::string::ToString::to_string)
+        .unwrap_or_else(|| String::from("---"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +117,16 @@ mod tests {
             format_elapsed_time(Duration::from_secs(32768)),
             "09:06:08".to_string()
         );
+    }
+
+    #[test]
+    fn test_maybe_string() {
+        let value: Option<u64> = Some(5);
+        assert_eq!(maybe_string(value.as_ref()), String::from("5"));
+        let value: Option<&str> = Some("test");
+        assert_eq!(maybe_string(value.as_ref()), String::from("test"));
+        let value: Option<&str> = None;
+        assert_eq!(maybe_string(value.as_ref()), String::from("---"));
     }
 
 }

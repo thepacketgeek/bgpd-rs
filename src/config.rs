@@ -58,7 +58,31 @@ impl ServerConfig {
     /// Get the path for the peers status output
     /// Derived from the root `output_dir`
     pub fn path_for_peers(&self) -> String {
-        format!("{}", self.output_dir.join("bgpd.peers").to_str().unwrap())
+        self.output_dir
+            .join("bgpd.peers")
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    /// Get the path for the raw learned routes output
+    /// Derived from the root `output_dir`
+    pub fn path_for_learned_routes(&self) -> String {
+        self.output_dir
+            .join("bgpd.learned_routes")
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    /// Get the path for the RIB output
+    /// Derived from the root `output_dir`
+    pub fn path_for_rib(&self) -> String {
+        self.output_dir
+            .join("bgpd.rib")
+            .to_str()
+            .unwrap()
+            .to_string()
     }
 }
 

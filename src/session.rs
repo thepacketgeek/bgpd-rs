@@ -6,10 +6,11 @@ use std::time::{Duration, Instant};
 use bgp_rs::Message;
 use futures::sync::mpsc;
 use futures::{Async, Poll, Stream};
-use log::{debug, trace, warn};
+use log::{debug, error, trace, warn};
 use tokio::prelude::*;
 
 use crate::codec::MessageProtocol;
+use crate::db::RouteDB;
 use crate::display::StatusRow;
 use crate::peer::{MessageCounts, Peer, PeerState};
 use crate::utils::format_elapsed_time;
@@ -140,7 +141,7 @@ impl Session {
             connect_time: Instant::now(),
             channel,
             hold_timer: HoldTimer::new(hold_timer),
-            counts: counts,
+            counts,
         }
     }
 
@@ -154,12 +155,38 @@ impl Session {
         Ok(())
     }
 
+    fn get_peer_status(&self) -> SessionStatus {
+        let prefixes_received = match self.peer.remote_id.router_id {
+            Some(router_id) => RouteDB::new()
+                .and_then(|db| db.get_routes_for_peer(router_id))
+                .map(|routes| Some(routes.len() as u64))
+                .map_err(|err| error!("Error fetching peer prefixes: {}", err))
+                .unwrap_or(None),
+            _ => None,
+        };
+        SessionStatus::new(
+            self.peer.addr,
+            Some(StatusRow {
+                neighbor: self.peer.addr,
+                asn: self.peer.remote_id.asn,
+                msg_received: Some(self.counts.received()),
+                msg_sent: Some(self.counts.sent()),
+                connect_time: Some(self.connect_time),
+                state: self.peer.get_state(),
+                prefixes_received,
+            }),
+        )
+    }
+
     // Send the peer back to the Idle Peers HashMap via the send channel
     // In order to do that, replace the session peer with an empty Peer struct
     fn replace_peer(&mut self) -> Peer {
         self.channel
             .start_send(SessionStatus::new(self.peer.addr, None))
             .and_then(|_| self.channel.poll_complete())
+            .ok();
+        RouteDB::new()
+            .and_then(|db| db.remove_routes_for_peer(self.peer.remote_id.router_id.unwrap()))
             .ok();
         let mut peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
         peer.update_state(PeerState::Idle);
@@ -249,18 +276,7 @@ impl Future for Session {
         }
 
         self.channel
-            .start_send(SessionStatus::new(
-                self.peer.addr,
-                Some(StatusRow {
-                    neighbor: self.peer.addr,
-                    asn: self.peer.remote_id.asn,
-                    msg_received: self.counts.received(),
-                    msg_sent: self.counts.sent(),
-                    connect_time: Some(self.connect_time),
-                    state: self.peer.get_state(),
-                    prefixes_received: 0,
-                }),
-            ))
+            .start_send(self.get_peer_status())
             .and_then(|_| self.channel.poll_complete())
             .ok();
         trace!("Finished polling {}", self);

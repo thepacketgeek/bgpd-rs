@@ -1,5 +1,6 @@
 mod codec;
 mod config;
+mod db;
 mod display;
 mod handler;
 mod peer;

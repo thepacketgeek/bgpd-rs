@@ -4,10 +4,12 @@ use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 
-use bgp_rs::{Message, Open, OpenParameter};
+use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
+use chrono::Utc;
 use log::{debug, trace, warn};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
+use crate::db::{Route, RouteDB};
 use crate::display::StatusRow;
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
@@ -172,7 +174,73 @@ impl Peer {
         trace!("{}: {:?}", self.remote_id, message);
         let response = match message {
             Message::KeepAlive => Some(Message::KeepAlive),
-            Message::Update(_) => None,
+            Message::Update(update) => {
+                if update.is_announcement() {
+                    let origin = update
+                        .get(Identifier::ORIGIN)
+                        .map(|attr| {
+                            if let PathAttribute::ORIGIN(origin) = attr {
+                                origin.clone()
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .expect("ORIGIN must be present in Update");
+                    let next_hop = update
+                        .get(Identifier::NEXT_HOP)
+                        .map(|attr| {
+                            if let PathAttribute::NEXT_HOP(next_hop) = attr {
+                                *next_hop
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .expect("NEXT_HOP must be present in Update");
+                    let as_path = update
+                        .get(Identifier::AS_PATH)
+                        .map(|attr| {
+                            if let PathAttribute::AS_PATH(as_path) = attr {
+                                as_path.clone()
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .expect("AS_PATH must be present in Update");
+                    let routes: Vec<Route> = update
+                        .announced_routes
+                        .iter()
+                        .map(|route| match route {
+                            NLRIEncoding::IP(prefix) => Some(prefix),
+                            _ => None,
+                        })
+                        .filter(std::option::Option::is_some)
+                        .map(std::option::Option::unwrap)
+                        .map(|prefix| {
+                            let addr = IpAddr::from(prefix);
+                            Route {
+                                received_from: self.remote_id.router_id.unwrap(),
+                                received_at: Utc::now(),
+                                prefix: addr,
+                                next_hop,
+                                origin: origin.clone(),
+                                as_path: as_path.clone(),
+                            }
+                        })
+                        .collect();
+                    RouteDB::new().and_then(|db| db.insert_routes(routes)).ok();
+                }
+                if update.is_withdrawal() {
+                    RouteDB::new()
+                        .and_then(|db| {
+                            db.remove_prefixes_from_peer(
+                                self.remote_id.router_id.unwrap(),
+                                &update.withdrawn_routes,
+                            )
+                        })
+                        .ok();
+                }
+                None
+            }
             Message::Notification(notification) => {
                 warn!("{} NOTIFICATION: {}", self.remote_id, notification);
                 None
@@ -218,11 +286,11 @@ impl From<&Peer> for StatusRow {
         StatusRow {
             neighbor: peer.addr,
             asn: peer.remote_id.asn,
-            msg_received: 0,
-            msg_sent: 0,
+            msg_received: None,
+            msg_sent: None,
             connect_time: None,
             state: peer.state,
-            prefixes_received: 0,
+            prefixes_received: None,
         }
     }
 }
