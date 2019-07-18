@@ -175,9 +175,9 @@ impl ToRow for Route {
             "Next Hop",
             "Age",
             "Origin",
-            "AS Path",
             "Local Pref",
             "Metric",
+            "AS Path",
             "Communities"
         ]
     }
@@ -216,9 +216,9 @@ impl ToRow for Route {
             self.next_hop,
             elapsed,
             String::from(&self.origin),
-            maybe_string(as_path.as_ref()),
             maybe_string(self.local_pref.as_ref()),
             maybe_string(self.multi_exit_disc.as_ref()),
+            maybe_string(as_path.as_ref()),
             &self.communities,
         ]
     }

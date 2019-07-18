@@ -68,26 +68,16 @@ For ExaBGP I have the following files (in the examples/exabgp dir):
 **conf_127.0.0.2.ini**
 ```ini
 neighbor 127.0.0.1 {
-# neighbor ::1 {   # Can use IPv6 also
-    # local-address ::2;
-    local-address 127.0.0.2;
     router-id 2.2.2.2;
-    local-as 65000;
-    peer-as 65000;
-    # passive true;  // Uncomment to test active connections from bgpd
-
-    capability {
-        asn4 enable;
-    }
-    family {
-        ipv4 unicast;
-        ipv6 unicast;
-    }
+    local-address 127.0.0.2;          # Our local update-source
+    local-as 65000;                    # Our local AS
+    peer-as 65000;                    # Peer's AS
 
     announce {
         ipv4 {
-            unicast 2.100.0.0/24 next-hop self;
-            unicast 2.200.0.0/24 next-hop self;
+            unicast 2.100.0.0/24 next-hop self med 500 extended-community [ target:65000:1.1.1.1 ];
+            unicast 2.200.0.0/24 next-hop self as-path [ 100 200 ];
+            unicast 2.10.0.0/24 next-hop self med 10 community [404 65000:10];
         }
     }
 }
