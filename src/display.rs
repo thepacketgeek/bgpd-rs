@@ -7,7 +7,7 @@ use std::time::Instant;
 use prettytable::{cell, format, row, Row, Table};
 
 use crate::peer::PeerState;
-use crate::utils::{asn_to_dotted, format_elapsed_time, maybe_string};
+use crate::utils::{asn_to_dotted, format_elapsed_time, maybe_string, EMPTY_VALUE};
 
 pub trait ToRow {
     fn columns() -> Row;
@@ -38,7 +38,7 @@ impl ToRow for StatusRow {
             if let Some(connect_time) = self.connect_time {
                 format_elapsed_time(connect_time.elapsed())
             } else {
-                String::from("---")
+                String::from(EMPTY_VALUE)
             },
             self.state.to_string(),
             maybe_string(self.prefixes_received.as_ref()),

@@ -1,15 +1,116 @@
 use std::convert::{From, Into, TryFrom, TryInto};
+use std::fmt;
 use std::net::IpAddr;
+use std::string::ToString;
 
 use bgp_rs::{ASPath, Origin, Prefix, Segment};
 use chrono::{DateTime, TimeZone, Utc};
 use log::{error, trace};
 use prettytable::{cell, row, Row as PTRow};
-use rusqlite::types::Type;
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
 use crate::display::ToRow;
-use crate::utils::format_elapsed_time;
+use crate::utils::{asn_to_dotted, ext_community_to_display, format_elapsed_time, maybe_string};
+
+#[derive(Debug, Clone)]
+pub enum Community {
+    // TODO: Consider another datamodel for these
+    //       size of the enum is much larger than the most typical
+    //       use case (STANDARD)
+    STANDARD(u32),
+    EXTENDED(u64),
+    // TODO
+    // LARGE(Vec<(u32, u32, u32)>),
+    // IPV6_EXTENDED((u8, u8, Ipv6Addr, u16)),
+}
+
+impl Community {
+    fn parse_from_sql(value: &str) -> std::result::Result<Community, FromSqlError> {
+        let rerr = |err| FromSqlError::Other(Box::new(err));
+        match &value[..1] {
+            "s" => {
+                let community = value[1..].parse::<u32>().map_err(rerr)?;
+                Ok(Community::STANDARD(community))
+            }
+            "e" => {
+                let community = value[1..].parse::<u64>().map_err(rerr)?;
+                Ok(Community::EXTENDED(community))
+            }
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl fmt::Display for Community {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Community::STANDARD(value) => write!(f, "{}", asn_to_dotted(*value)),
+            Community::EXTENDED(value) => write!(f, "{}", ext_community_to_display(*value)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CommunityList {
+    communities: Vec<Community>,
+}
+
+impl CommunityList {
+    pub fn new(communities: Vec<Community>) -> Self {
+        CommunityList { communities }
+    }
+}
+
+impl fmt::Display for CommunityList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let communities = self
+            .communities
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<String>>()
+            .join(" ");
+        write!(f, "{}", communities)
+    }
+}
+
+
+/// Encode a CommunityList for SQL Storage
+/// Will prepend initial for Community Type (for decoding back to struct)
+/// E.g.
+///     s65000;e8008fde800000064
+impl ToSql for CommunityList {
+    fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
+        let result = self
+            .communities
+            .iter()
+            .map(|community| match community {
+                Community::STANDARD(community) => format!("s{}", community.to_string()),
+                Community::EXTENDED(community) => format!("e{}", community.to_string()),
+            })
+            .collect::<Vec<String>>()
+            .join(";");
+        Ok(ToSqlOutput::from(result))
+    }
+}
+
+
+/// Decode SQL back to CommunityList
+/// See `impl ToSql for CommunityList` for details
+impl FromSql for CommunityList {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        value.as_str().and_then(|communities| {
+            if communities.is_empty() {
+                return Ok(CommunityList::new(vec![]));
+            }
+            let mut parsed: Vec<Community> = Vec::new();
+            for community in communities.split(';') {
+                parsed.push(Community::parse_from_sql(community)?);
+            }
+            Ok(CommunityList::new(parsed))
+        })
+    }
+}
 
 #[derive(Debug)]
 pub struct Route {
@@ -19,6 +120,9 @@ pub struct Route {
     pub next_hop: IpAddr,
     pub origin: Origin,
     pub as_path: ASPath,
+    pub local_pref: Option<u32>,
+    pub multi_exit_disc: Option<u32>,
+    pub communities: CommunityList,
 }
 
 impl<'a> TryFrom<&Row<'a>> for Route {
@@ -55,13 +159,27 @@ impl<'a> TryFrom<&Row<'a>> for Route {
             next_hop,
             origin,
             as_path,
+            local_pref: row.get(6)?,
+            multi_exit_disc: row.get(7)?,
+            communities: row.get(8)?,
         })
     }
 }
 
 impl ToRow for Route {
     fn columns() -> PTRow {
-        row!["Neighbor", "AFI", "Prefix", "Next Hop", "Age", "Origin", "AS Path"]
+        row![
+            "Neighbor",
+            "AFI",
+            "Prefix",
+            "Next Hop",
+            "Age",
+            "Origin",
+            "AS Path",
+            "Local Pref",
+            "Metric",
+            "Communities"
+        ]
     }
 
     fn to_row(&self) -> PTRow {
@@ -82,12 +200,14 @@ impl ToRow for Route {
                     Segment::AS_SEQUENCE(sequence) => sequence,
                     Segment::AS_SET(set) => set,
                 };
-                path.iter()
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<String>>()
-                    .join(" ")
+                Some(
+                    path.iter()
+                        .map(std::string::ToString::to_string)
+                        .collect::<Vec<String>>()
+                        .join(" "),
+                )
             }
-            None => String::from(""),
+            None => None,
         };
         row![
             self.received_from,
@@ -96,7 +216,10 @@ impl ToRow for Route {
             self.next_hop,
             elapsed,
             String::from(&self.origin),
-            &as_path,
+            maybe_string(as_path.as_ref()),
+            maybe_string(self.local_pref.as_ref()),
+            maybe_string(self.multi_exit_disc.as_ref()),
+            &self.communities,
         ]
     }
 }
@@ -116,7 +239,10 @@ impl RouteDB {
                 prefix TEXT NOT NULL,
                 next_hop TEXT NOT NULL,
                 origin TEXT NOT NULL,
-                as_path TEXT NOT NULL
+                as_path TEXT NOT NULL,
+                local_pref INTEGER,
+                metric INTEGER,
+                communities TEXT NOT NULL
             )",
             NO_PARAMS,
         )?;
@@ -125,8 +251,10 @@ impl RouteDB {
 
     pub fn get_all_routes(&self) -> Result<Vec<Route>> {
         let mut stmt = self.conn.prepare(
-            r###"SELECT router_id, received_at, prefix, next_hop, origin, as_path FROM
-            routes ORDER BY router_id ASC, prefix ASC"###,
+            r#"SELECT
+                router_id, received_at, prefix, next_hop,
+                origin, as_path, local_pref, metric, communities
+            FROM routes ORDER BY router_id ASC, prefix ASC"#,
         )?;
         let route_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
         let mut routes: Vec<Route> = Vec::new();
@@ -142,7 +270,10 @@ impl RouteDB {
     pub fn get_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
         trace!("Getting routes for peer {}", router_id);
         let mut stmt = self.conn.prepare(
-            "SELECT router_id, received_at, prefix, next_hop, origin, as_path FROM routes WHERE router_id = ?1",
+            r#"SELECT
+                router_id, received_at, prefix, next_hop,
+                origin, as_path, local_pref, metric, communities
+            FROM routes WHERE router_id = ?1"#,
         )?;
         let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
         let mut routes: Vec<Route> = Vec::new();
@@ -160,8 +291,10 @@ impl RouteDB {
         for route in routes {
             let as_path = as_path_to_string(&route.as_path);
             self.conn.execute(
-                "INSERT INTO routes (router_id, received_at, prefix, next_hop, origin, as_path)
-                        VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                r#"INSERT INTO routes
+                    (router_id, received_at, prefix, next_hop,
+                    origin, as_path, local_pref, metric, communities)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
                 &[
                     &route.received_from.to_string(),
                     &route.received_at.timestamp().to_string(),
@@ -169,6 +302,9 @@ impl RouteDB {
                     &route.next_hop.to_string(),
                     &((&route.origin).into()),
                     &as_path,
+                    &route.local_pref as &ToSql,
+                    &route.multi_exit_disc as &ToSql,
+                    &route.communities as &ToSql,
                 ],
             )?;
             trace!("\t{:?}", route);
@@ -199,7 +335,7 @@ impl RouteDB {
     }
 }
 
-pub fn as_path_to_string(as_path: &ASPath) -> String {
+fn as_path_to_string(as_path: &ASPath) -> String {
     fn asns_to_string(asns: &[u32]) -> String {
         asns.iter()
             .map(std::string::ToString::to_string)
@@ -222,7 +358,7 @@ pub fn as_path_to_string(as_path: &ASPath) -> String {
         .join(";")
 }
 
-pub fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::ParseIntError> {
+fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::ParseIntError> {
     fn segment_from_string(
         segment: &str,
     ) -> std::result::Result<Option<Segment>, std::num::ParseIntError> {

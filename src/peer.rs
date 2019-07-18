@@ -9,7 +9,7 @@ use chrono::Utc;
 use log::{debug, trace, warn};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
-use crate::db::{Route, RouteDB};
+use crate::db::{Community, CommunityList, Route, RouteDB};
 use crate::display::StatusRow;
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
@@ -206,6 +206,61 @@ impl Peer {
                             }
                         })
                         .expect("AS_PATH must be present in Update");
+                    let local_pref = update
+                        .get(Identifier::LOCAL_PREF)
+                        .map(|attr| {
+                            if let PathAttribute::LOCAL_PREF(local_pref) = attr {
+                                Some(*local_pref)
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .unwrap_or(None);
+                    let multi_exit_disc = update
+                        .get(Identifier::MULTI_EXIT_DISC)
+                        .map(|attr| {
+                            if let PathAttribute::MULTI_EXIT_DISC(metric) = attr {
+                                Some(*metric)
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .unwrap_or(None);
+                    let communities = update
+                        .get(Identifier::COMMUNITY)
+                        .map(|attr| {
+                            if let PathAttribute::COMMUNITY(communities) = attr {
+                                communities
+                                    .iter()
+                                    .map(|c| Community::STANDARD(*c))
+                                    .collect::<Vec<Community>>()
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .unwrap_or_else(|| vec![]);
+
+                    let ext_communities = update
+                        .get(Identifier::EXTENDED_COMMUNITIES)
+                        .map(|attr| {
+                            if let PathAttribute::EXTENDED_COMMUNITIES(communities) = attr {
+                                communities
+                                    .iter()
+                                    .map(|c| Community::EXTENDED(*c))
+                                    .collect::<Vec<Community>>()
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .unwrap_or_else(|| vec![]);
+
+                    let community_list = CommunityList::new(
+                        communities
+                            .into_iter()
+                            .chain(ext_communities.into_iter())
+                            .collect(),
+                    );
+
                     let routes: Vec<Route> = update
                         .announced_routes
                         .iter()
@@ -224,6 +279,9 @@ impl Peer {
                                 next_hop,
                                 origin: origin.clone(),
                                 as_path: as_path.clone(),
+                                local_pref,
+                                multi_exit_disc,
+                                communities: community_list.clone(),
                             }
                         })
                         .collect();

@@ -252,7 +252,11 @@ impl Future for Session {
                     .ok();
                 self.hold_timer.received_update();
             } else {
-                warn!("Session ended with {}", self.peer);
+                warn!(
+                    "Session ended with {} [{}]",
+                    self.peer.remote_id.router_id.unwrap(),
+                    self.peer.addr
+                );
                 // Before the Session is dropped, send peer back to idle peers
                 let peer = self.replace_peer();
                 return Ok(Async::Ready(peer));
