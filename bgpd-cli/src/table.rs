@@ -1,49 +1,20 @@
+use std::convert::From;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
 use std::marker::PhantomData;
 use std::net::IpAddr;
 use std::time::Instant;
 
+use chrono::{DateTime, TimeZone, Utc};
 use prettytable::{cell, format, row, Row, Table};
 
-use crate::peer::PeerState;
-use crate::utils::{asn_to_dotted, format_elapsed_time, maybe_string, EMPTY_VALUE};
+use bgpd_lib::db::Route;
+use bgpd_lib::peer::{Peer, PeerState};
+use bgpd_lib::utils::{asn_to_dotted, format_elapsed_time, maybe_string, EMPTY_VALUE};
 
 pub trait ToRow {
     fn columns() -> Row;
     fn to_row(&self) -> Row;
-}
-
-pub struct StatusRow {
-    pub neighbor: IpAddr,
-    pub asn: u32,
-    pub msg_received: Option<u64>,
-    pub msg_sent: Option<u64>,
-    pub connect_time: Option<Instant>,
-    pub state: PeerState,
-    pub prefixes_received: Option<u64>,
-}
-
-impl ToRow for StatusRow {
-    fn columns() -> Row {
-        row!["Neighbor", "AS", "MsgRcvd", "MsgSent", "Uptime", "State", "PfxRcd"]
-    }
-
-    fn to_row(&self) -> Row {
-        row![
-            self.neighbor.to_string(),
-            asn_to_dotted(self.asn),
-            maybe_string(self.msg_received.as_ref()),
-            maybe_string(self.msg_sent.as_ref()),
-            if let Some(connect_time) = self.connect_time {
-                format_elapsed_time(connect_time.elapsed())
-            } else {
-                String::from(EMPTY_VALUE)
-            },
-            self.state.to_string(),
-            maybe_string(self.prefixes_received.as_ref()),
-        ]
-    }
 }
 
 pub struct OutputTable<T: ToRow> {

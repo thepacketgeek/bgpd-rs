@@ -5,6 +5,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
+use bgpd_lib::codec::{MessageCodec, MessageProtocol};
+use bgpd_lib::db::{Route, RouteDB};
+use bgpd_lib::peer::{Peer, PeerIdentifier, PeerState};
 use futures::future::{self, Either, Future};
 use log::{debug, error, info, trace, warn};
 use net2::TcpBuilder;
@@ -14,11 +17,7 @@ use tokio::reactor::Handle;
 use tokio::runtime::Runtime;
 use tokio::timer::Interval;
 
-use crate::codec::{MessageCodec, MessageProtocol};
 use crate::config::ServerConfig;
-use crate::db::{Route, RouteDB};
-use crate::display::{OutputTable, StatusRow};
-use crate::peer::{Peer, PeerIdentifier, PeerState};
 use crate::session::{Channel, Session, Tx};
 
 type Peers = HashMap<IpAddr, Peer>;
@@ -206,65 +205,65 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     };
     runtime.spawn(connect);
 
-    let session_status: Arc<Mutex<HashMap<IpAddr, StatusRow>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    // Poll the channel for Session status updates
-    let session_poller = {
-        let session_status = session_status.clone();
-        channel.receiver.for_each(move |session| {
-            session_status
-                .lock()
-                .map(|mut sessions| {
-                    if let Some(row) = session.status {
-                        sessions.insert(session.addr, row);
-                    } else {
-                        sessions.remove(&session.addr);
-                    }
-                })
-                .ok();
-            future::ok(())
-        })
-    };
-    runtime.spawn(session_poller);
+    // let session_status: Arc<Mutex<HashMap<IpAddr, StatusRow>>> =
+    //     Arc::new(Mutex::new(HashMap::new()));
+    // // Poll the channel for Session status updates
+    // let session_poller = {
+    //     let session_status = session_status.clone();
+    //     channel.receiver.for_each(move |session| {
+    //         session_status
+    //             .lock()
+    //             .map(|mut sessions| {
+    //                 if let Some(row) = session.status {
+    //                     sessions.insert(session.addr, row);
+    //                 } else {
+    //                     sessions.remove(&session.addr);
+    //                 }
+    //             })
+    //             .ok();
+    //         future::ok(())
+    //     })
+    // };
+    // runtime.spawn(session_poller);
 
     // TCP Connections outbound
     // Attempt to connect to configured & idle peers
-    let peers_path = config.path_for_peers();
-    let learned_routes_path = config.path_for_learned_routes();
-    let output = {
-        let peers = peers.clone();
-        let session_status = session_status.clone();
-        Interval::new(Instant::now(), Duration::from_secs(1))
-            .for_each(move |_| {
-                let mut status_table = OutputTable::new();
-                for (_, session) in session_status.lock().unwrap().iter() {
-                    status_table.add_row(session);
-                }
-                for (_, peer) in peers.lock().unwrap().iter() {
-                    status_table.add_row(&StatusRow::from(peer));
-                }
-                status_table.write(&peers_path);
+    // let peers_path = config.path_for_peers();
+    // let learned_routes_path = config.path_for_learned_routes();
+    // let output = {
+    //     let peers = peers.clone();
+    //     let session_status = session_status.clone();
+    //     Interval::new(Instant::now(), Duration::from_secs(1))
+    //         .for_each(move |_| {
+    //             let mut status_table = OutputTable::new();
+    //             for (_, session) in session_status.lock().unwrap().iter() {
+    //                 status_table.add_row(session);
+    //             }
+    //             for (_, peer) in peers.lock().unwrap().iter() {
+    //                 status_table.add_row(&StatusRow::from(peer));
+    //             }
+    //             status_table.write(&peers_path);
 
-                // Print out current routes
-                let mut route_table = OutputTable::new();
-                let results = RouteDB::new()
-                    .and_then(|db| db.get_all_routes())
-                    .unwrap_or_else(|_| vec![]);
-                for route in results {
-                    route_table.add_row(&route);
-                }
-                route_table.write(&learned_routes_path);
-                Ok(())
-            })
-            .map_err(|e| error!("Error writing session info: {:?}", e))
-    };
-    runtime.spawn(output);
+    //             // Print out current routes
+    //             let mut route_table = OutputTable::new();
+    //             let results = RouteDB::new()
+    //                 .and_then(|db| db.get_all_routes())
+    //                 .unwrap_or_else(|_| vec![]);
+    //             for route in results {
+    //                 route_table.add_row(&route);
+    //             }
+    //             route_table.write(&learned_routes_path);
+    //             Ok(())
+    //         })
+    //         .map_err(|e| error!("Error writing session info: {:?}", e))
+    // };
+    // runtime.spawn(output);
 
     ctrlc::set_handler(move || {
         info!("Stopping BGP server...");
         // Reset Output Files
-        OutputTable::<StatusRow>::new().write(&config.path_for_peers());
-        OutputTable::<Route>::new().write(&config.path_for_learned_routes());
+        // OutputTable::<StatusRow>::new().write(&config.path_for_peers());
+        // OutputTable::<Route>::new().write(&config.path_for_learned_routes());
         // Remove RouteDB
         std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting RouteDB");
         std::process::exit(0);

@@ -3,6 +3,7 @@ use std::convert::From;
 use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
+use std::time::Instant;
 
 use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
 use chrono::Utc;
@@ -10,7 +11,6 @@ use log::{debug, trace, warn};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
 use crate::db::{Community, CommunityList, Route, RouteDB};
-use crate::display::StatusRow;
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
 #[derive(Debug, Copy, Clone)]
@@ -339,19 +339,6 @@ impl fmt::Display for Peer {
     }
 }
 
-impl From<&Peer> for StatusRow {
-    fn from(peer: &Peer) -> Self {
-        StatusRow {
-            neighbor: peer.addr,
-            asn: peer.remote_id.asn,
-            msg_received: None,
-            msg_sent: None,
-            connect_time: None,
-            state: peer.state,
-            prefixes_received: None,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct MessageCounts {

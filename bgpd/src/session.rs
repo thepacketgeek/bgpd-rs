@@ -4,24 +4,22 @@ use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
+use bgpd_lib::codec::MessageProtocol;
+use bgpd_lib::db::{PeerStatus, RouteDB};
+use bgpd_lib::peer::{MessageCounts, Peer, PeerState};
+use bgpd_lib::utils::format_elapsed_time;
 use futures::sync::mpsc;
 use futures::{Async, Poll, Stream};
 use log::{debug, error, trace, warn};
 use tokio::prelude::*;
 
-use crate::codec::MessageProtocol;
-use crate::db::RouteDB;
-use crate::display::StatusRow;
-use crate::peer::{MessageCounts, Peer, PeerState};
-use crate::utils::format_elapsed_time;
-
 pub struct SessionStatus {
     pub addr: IpAddr,
-    pub status: Option<StatusRow>,
+    pub status: Option<PeerStatus>,
 }
 
 impl SessionStatus {
-    pub fn new(addr: IpAddr, status: Option<StatusRow>) -> Self {
+    pub fn new(addr: IpAddr, status: Option<PeerStatus>) -> Self {
         SessionStatus { addr, status }
     }
 }
@@ -166,8 +164,9 @@ impl Session {
         };
         SessionStatus::new(
             self.peer.addr,
-            Some(StatusRow {
+            Some(PeerStatus {
                 neighbor: self.peer.addr,
+                router_id: self.peer.remote_id.router_id,
                 asn: self.peer.remote_id.asn,
                 msg_received: Some(self.counts.received()),
                 msg_sent: Some(self.counts.sent()),

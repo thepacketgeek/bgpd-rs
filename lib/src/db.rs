@@ -2,6 +2,7 @@ use std::convert::{From, Into, TryFrom, TryInto};
 use std::fmt;
 use std::net::IpAddr;
 use std::string::ToString;
+use std::time::Instant;
 
 use bgp_rs::{ASPath, Origin, Prefix, Segment};
 use chrono::{DateTime, TimeZone, Utc};
@@ -10,7 +11,7 @@ use prettytable::{cell, row, Row as PTRow};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
-use crate::display::ToRow;
+use crate::peer::{PeerState};
 use crate::utils::{asn_to_dotted, ext_community_to_display, format_elapsed_time, maybe_string};
 
 #[derive(Debug, Clone)]
@@ -74,7 +75,6 @@ impl fmt::Display for CommunityList {
     }
 }
 
-
 /// Encode a CommunityList for SQL Storage
 /// Will prepend initial for Community Type (for decoding back to struct)
 /// E.g.
@@ -93,7 +93,6 @@ impl ToSql for CommunityList {
         Ok(ToSqlOutput::from(result))
     }
 }
-
 
 /// Decode SQL back to CommunityList
 /// See `impl ToSql for CommunityList` for details
@@ -166,63 +165,65 @@ impl<'a> TryFrom<&Row<'a>> for Route {
     }
 }
 
-impl ToRow for Route {
-    fn columns() -> PTRow {
-        row![
-            "Neighbor",
-            "AFI",
-            "Prefix",
-            "Next Hop",
-            "Age",
-            "Origin",
-            "Local Pref",
-            "Metric",
-            "AS Path",
-            "Communities"
-        ]
-    }
-
-    fn to_row(&self) -> PTRow {
-        let duration = Utc::now().signed_duration_since(self.received_at);
-        let afi = match self.prefix {
-            IpAddr::V4(_) => "IPv4",
-            IpAddr::V6(_) => "IPv6",
-        };
-        let elapsed = duration
-            .to_std()
-            .map(format_elapsed_time)
-            .unwrap_or_else(|_| duration.to_string());
-        // TODO, this just displays the first segment as space delimited ASNs
-        // Should it display more?
-        let as_path = match self.as_path.segments.iter().next() {
-            Some(segment) => {
-                let path = match segment {
-                    Segment::AS_SEQUENCE(sequence) => sequence,
-                    Segment::AS_SET(set) => set,
-                };
-                Some(
-                    path.iter()
-                        .map(std::string::ToString::to_string)
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                )
-            }
-            None => None,
-        };
-        row![
-            self.received_from,
-            afi,
-            self.prefix,
-            self.next_hop,
-            elapsed,
-            String::from(&self.origin),
-            maybe_string(self.local_pref.as_ref()),
-            maybe_string(self.multi_exit_disc.as_ref()),
-            maybe_string(as_path.as_ref()),
-            &self.communities,
-        ]
-    }
+#[derive(Debug)]
+pub struct PeerStatus {
+    pub neighbor: IpAddr,
+    pub router_id: Option<IpAddr>,
+    pub asn: u32,
+    pub msg_received: Option<u64>,
+    pub msg_sent: Option<u64>,
+    pub connect_time: Option<Instant>,
+    pub state: PeerState,
+    pub prefixes_received: Option<u64>,
 }
+
+// impl<'a> TryFrom<&Row<'a>> for PeerStatus {
+//     type Error = RError;
+
+//     fn try_from(row: &Row) -> std::result::Result<Self, Self::Error> {
+//         let addr = row
+//             .get(0)
+//             .map(|prefix: String| prefix.parse::<IpAddr>())?
+//             .map_err(|err| RError::FromSqlConversionFailure(0, Type::Text, Box::new(err)))?;
+//         let router_id = row
+//             .get(1)
+//             .map(|prefix: Option<String>| match prefix {
+//                 Some(prefix) => prefix.parse::<IpAddr>()?,
+//                 None => None,
+//             })?
+//             .map_err(|err| RError::FromSqlConversionFailure(0, Type::Text, Box::new(err)))?;
+//         let remote_as = row
+//             .get(1)
+//             .map(|timestamp: i64| Utc.timestamp(timestamp, 0))?;
+//         let prefix = row
+//             .get(2)
+//             .map(|prefix: String| prefix.parse::<IpAddr>())?
+//             .map_err(|err| RError::FromSqlConversionFailure(2, Type::Text, Box::new(err)))?;
+//         let next_hop = row
+//             .get(3)
+//             .map(|next_hop: String| next_hop.parse::<IpAddr>())?
+//             .map_err(|err| RError::FromSqlConversionFailure(3, Type::Text, Box::new(err)))?;
+//         let origin = row
+//             .get(4)
+//             .map(|origin: String| Origin::try_from(&origin[..]))?
+//             .map_err(|err| RError::FromSqlConversionFailure(4, Type::Text, Box::new(err)))?;
+//         let as_path = row
+//             .get(5)
+//             .map(|as_path: String| as_path_from_string(&as_path))?
+//             .map_err(|err| RError::FromSqlConversionFailure(5, Type::Text, Box::new(err)))?;
+//         Ok(PeerStatus {
+//             received_from,
+//             received_at,
+//             prefix,
+//             next_hop,
+//             origin,
+//             as_path,
+//             local_pref: row.get(6)?,
+//             multi_exit_disc: row.get(7)?,
+//             communities: row.get(8)?,
+//         })
+//     }
+// }
 
 pub struct RouteDB {
     conn: Connection,
@@ -233,6 +234,21 @@ impl RouteDB {
         let conn = Connection::open("/tmp/bgpd.sqlite3")?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS routes (
+                id INTEGER PRIMARY KEY,
+                router_id TEXT NOT NULL,
+                received_at BIGINT NOT NULL,
+                prefix TEXT NOT NULL,
+                next_hop TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                as_path TEXT NOT NULL,
+                local_pref INTEGER,
+                metric INTEGER,
+                communities TEXT NOT NULL
+            )",
+            NO_PARAMS,
+        )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS peers (
                 id INTEGER PRIMARY KEY,
                 router_id TEXT NOT NULL,
                 received_at BIGINT NOT NULL,
