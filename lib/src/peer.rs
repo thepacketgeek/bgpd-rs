@@ -355,7 +355,7 @@ impl fmt::Display for Peer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MessageCounts {
     received: u64,
     sent: u64,
@@ -363,10 +363,7 @@ pub struct MessageCounts {
 
 impl MessageCounts {
     pub fn new() -> Self {
-        MessageCounts {
-            received: 0,
-            sent: 0,
-        }
+        MessageCounts::default()
     }
 
     pub fn received(&self) -> u64 {

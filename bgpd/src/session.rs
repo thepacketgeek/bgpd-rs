@@ -5,7 +5,7 @@ use bgp_rs::Message;
 use bgpd_lib::codec::MessageProtocol;
 use bgpd_lib::db::{PeerStatus, RouteDB};
 use bgpd_lib::peer::{MessageCounts, Peer, PeerState};
-use bgpd_lib::utils::format_elapsed_time;
+use bgpd_lib::utils::{format_elapsed_time, format_time_as_elapsed, get_elapsed_time};
 use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};
 use log::{debug, error, trace, warn};
@@ -34,10 +34,10 @@ impl HoldTimer {
     // Will never be less than 0, at which the peer hold time has expired
     fn get_hold_time(&self) -> Duration {
         let hold_time = Duration::seconds(self.hold_timer.into());
-        if Utc::now().signed_duration_since(self.last_update) > hold_time {
+        if get_elapsed_time(self.last_update) > hold_time {
             Duration::seconds(0)
         } else {
-            hold_time - Utc::now().signed_duration_since(self.last_update)
+            hold_time - get_elapsed_time(self.last_update)
         }
     }
 
@@ -141,7 +141,7 @@ impl fmt::Display for Session {
             f,
             "<Session {} uptime={} hold_time={}>",
             self.protocol.get_ref().peer_addr().unwrap(),
-            format_elapsed_time(Utc::now().signed_duration_since(self.connect_time)),
+            format_time_as_elapsed(self.connect_time),
             self.hold_timer,
         )
     }

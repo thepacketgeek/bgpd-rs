@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_parse_config() {
-        let config = ServerConfig::from_file("./examples/config.toml").unwrap();
+        let config = ServerConfig::from_file("../examples/config.toml").unwrap();
         assert_eq!(config.router_id, IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)));
         assert_eq!(config.default_as, 65000);
         assert_eq!(config.peers.len(), 3);
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_path_for_peers() {
-        let config = ServerConfig::from_file("./examples/config.toml").unwrap();
+        let config = ServerConfig::from_file("../examples/config.toml").unwrap();
         assert_eq!(config.path_for_peers(), String::from("./bgpd.peers"));
     }
 }

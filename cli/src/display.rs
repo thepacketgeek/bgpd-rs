@@ -3,8 +3,7 @@ use std::net::IpAddr;
 
 use bgp_rs::Segment;
 use bgpd_lib::db::{PeerStatus, Route};
-use bgpd_lib::utils::{asn_to_dotted, format_elapsed_time, maybe_string, EMPTY_VALUE};
-use chrono::Utc;
+use bgpd_lib::utils::{asn_to_dotted, format_time_as_elapsed, maybe_string, EMPTY_VALUE};
 use prettytable::{cell, row, Row};
 
 use crate::table::ToRow;
@@ -24,7 +23,7 @@ impl ToRow for (&PeerStatus, Option<usize>) {
             maybe_string(peer.msg_sent.as_ref()),
             if let Some(connect_time) = peer.connect_time {
                 println!("{:?}", connect_time);
-                format_elapsed_time(Utc::now().signed_duration_since(connect_time))
+                format_time_as_elapsed(connect_time)
             } else {
                 String::from(EMPTY_VALUE)
             },
@@ -51,7 +50,6 @@ impl ToRow for Route {
     }
 
     fn to_row(&self) -> Row {
-        let duration = Utc::now().signed_duration_since(self.received_at);
         let afi = match self.prefix {
             IpAddr::V4(_) => "IPv4",
             IpAddr::V6(_) => "IPv6",
@@ -78,7 +76,7 @@ impl ToRow for Route {
             afi,
             self.prefix,
             self.next_hop,
-            format_elapsed_time(duration),
+            format_time_as_elapsed(self.received_at),
             String::from(&self.origin),
             maybe_string(self.local_pref.as_ref()),
             maybe_string(self.multi_exit_disc.as_ref()),

@@ -1,4 +1,4 @@
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use std::net::IpAddr;
 
 pub const EMPTY_VALUE: &str = "";
@@ -89,11 +89,21 @@ fn fit_with_remainder(dividend: u64, divisor: u64) -> (u64, u64) {
     (fit, remainder)
 }
 
+pub fn get_elapsed_time(time: DateTime<Utc>) -> Duration {
+    Utc::now().signed_duration_since(time)
+}
+
+/// Given a duration, format like "00:00:00"
 pub fn format_elapsed_time(elapsed: Duration) -> String {
-    let elapsed_seconds = elapsed.num_seconds().abs() as u64;
-    let (hours, remainder) = fit_with_remainder(elapsed_seconds, 3600);
+    let elapsed = elapsed.num_seconds().abs() as u64;
+    let (hours, remainder) = fit_with_remainder(elapsed, 3600);
     let (minutes, seconds) = fit_with_remainder(remainder, 60);
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+}
+
+/// Given a timestamp, get the elapsed time and return formatted string
+pub fn format_time_as_elapsed(time: DateTime<Utc>) -> String {
+    format_elapsed_time(get_elapsed_time(time))
 }
 
 pub fn maybe_string<T>(item: Option<&T>) -> String
@@ -147,15 +157,15 @@ mod tests {
     #[test]
     fn test_format_elapsed_time() {
         assert_eq!(
-            format_elapsed_time(Duration::from_secs(30)),
+            format_elapsed_time(Duration::seconds(30)),
             "00:00:30".to_string()
         );
         assert_eq!(
-            format_elapsed_time(Duration::from_secs(301)),
+            format_elapsed_time(Duration::seconds(301)),
             "00:05:01".to_string()
         );
         assert_eq!(
-            format_elapsed_time(Duration::from_secs(32768)),
+            format_elapsed_time(Duration::seconds(32768)),
             "09:06:08".to_string()
         );
     }
