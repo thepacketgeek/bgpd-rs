@@ -1,0 +1,16 @@
+[package]
+name = "bgpd-cli"
+version = "0.1.0"
+authors = ["Mat Wood <mat@thepacketgeek.com>"]
+edition = "2018"
+
+[[bin]]
+name = "bgpd-cli"
+path = "bgpd-cli/main.rs"
+
+[dependencies]
+bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs", branch = "message-attrs" }
+bgpd-lib = { path = "../lib" }
+chrono = "0.4.7"
+clap = "2.33.0"
+prettytable-rs = "0.8.0"
