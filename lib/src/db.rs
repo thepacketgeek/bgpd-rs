@@ -16,8 +16,8 @@ use crate::utils::{asn_to_dotted, ext_community_to_display};
 #[derive(Debug, Clone)]
 pub enum Community {
     // TODO: Consider another datamodel for these
-    //       size of the enum is much larger than the most typical
-    //       use case (STANDARD)
+    //       size of the max variant (EXTENDED) is much larger than
+    //       the most typical use case (STANDARD)
     STANDARD(u32),
     EXTENDED(u64),
     // TODO
@@ -264,7 +264,7 @@ impl RouteDB {
                 asn BIGINT NOT NULL,
                 msg_received BIGINT,
                 msg_sent BIGINT,
-                connect_time TEXT,
+                connect_time BIGINT,
                 state TEXT NOT NULL
             )",
             NO_PARAMS,
@@ -355,6 +355,24 @@ impl RouteDB {
             &[&router_id.to_string()],
         )?;
         Ok(())
+    }
+
+    pub fn get_all_peers(&self) -> Result<Vec<PeerStatus>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT
+                neighbor, router_id, asn, msg_received,
+                msg_sent, connect_time, state
+            FROM peers ORDER BY neighbor ASC"#,
+        )?;
+        let peer_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
+        let mut peers: Vec<PeerStatus> = Vec::new();
+        for peer in peer_iter {
+            match peer {
+                Ok(peer) => peers.push(peer),
+                Err(err) => error!("Error parsing peer in RouteDB: {}", err),
+            }
+        }
+        Ok(peers)
     }
 
     pub fn update_peer(&self, status: &PeerStatus) -> Result<()> {

@@ -1,16 +1,6 @@
-use std::convert::From;
-use std::fs::OpenOptions;
-use std::io::{BufWriter, Write};
 use std::marker::PhantomData;
-use std::net::IpAddr;
-use std::time::Instant;
 
-use chrono::{DateTime, TimeZone, Utc};
-use prettytable::{cell, format, row, Row, Table};
-
-use bgpd_lib::db::Route;
-use bgpd_lib::peer::{Peer, PeerState};
-use bgpd_lib::utils::{asn_to_dotted, format_elapsed_time, maybe_string, EMPTY_VALUE};
+use prettytable::{format, Row, Table};
 
 pub trait ToRow {
     fn columns() -> Row;
@@ -27,8 +17,19 @@ where
     T: ToRow,
 {
     pub fn new() -> Self {
+        let format = format::FormatBuilder::new()
+            .padding(1, 1)
+            .separator(
+                format::LinePosition::Title,
+                format::LineSeparator::new('-', '+', '+', '+'),
+            )
+            .build();
+        Self::with_format(format)
+    }
+
+    pub fn with_format(format: format::TableFormat) -> Self {
         let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_CLEAN);
+        table.set_format(format);
         table.add_row(T::columns());
         Self {
             inner: table,
@@ -40,15 +41,7 @@ where
         self.inner.add_row(row.to_row());
     }
 
-    pub fn write(&self, path: &str) {
-        let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .unwrap();
-
-        let mut buf = BufWriter::new(file);
-        buf.write_all(format!("{}", self.inner).as_bytes()).unwrap();
+    pub fn print(&self) {
+        self.inner.printstd();
     }
 }

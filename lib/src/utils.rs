@@ -1,5 +1,5 @@
+use chrono::Duration;
 use std::net::IpAddr;
-use std::time::Duration;
 
 pub const EMPTY_VALUE: &str = "";
 
@@ -90,7 +90,8 @@ fn fit_with_remainder(dividend: u64, divisor: u64) -> (u64, u64) {
 }
 
 pub fn format_elapsed_time(elapsed: Duration) -> String {
-    let (hours, remainder) = fit_with_remainder(elapsed.as_secs(), 3600);
+    let elapsed_seconds = elapsed.num_seconds().abs() as u64;
+    let (hours, remainder) = fit_with_remainder(elapsed_seconds, 3600);
     let (minutes, seconds) = fit_with_remainder(remainder, 60);
     format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
 }

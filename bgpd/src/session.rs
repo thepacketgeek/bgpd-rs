@@ -1,43 +1,43 @@
 use std::fmt;
 use std::io::Error;
-use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
 use bgpd_lib::codec::MessageProtocol;
 use bgpd_lib::db::{PeerStatus, RouteDB};
 use bgpd_lib::peer::{MessageCounts, Peer, PeerState};
 use bgpd_lib::utils::format_elapsed_time;
+use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};
 use log::{debug, error, trace, warn};
 use tokio::prelude::*;
 
 struct HoldTimer {
     hold_timer: u16,
-    last_update: Instant,
+    last_update: DateTime<Utc>,
 }
 
 impl HoldTimer {
     fn new(hold_timer: u16) -> HoldTimer {
         HoldTimer {
             hold_timer,
-            last_update: Instant::now(),
+            last_update: Utc::now(),
         }
     }
 
     // Calculate the interval for sending keepalives
     fn get_keepalive_timer(&self) -> Duration {
-        Duration::from_secs((self.hold_timer / 3).into())
+        Duration::seconds((self.hold_timer / 3).into())
     }
 
     // Calculate remaining hold time available
     // Counts down from self.hold_timer to 0
     // Will never be less than 0, at which the peer hold time has expired
     fn get_hold_time(&self) -> Duration {
-        let hold_time = Duration::from_secs(self.hold_timer.into());
-        if self.last_update.elapsed() > hold_time {
-            Duration::from_secs(0)
+        let hold_time = Duration::seconds(self.hold_timer.into());
+        if Utc::now().signed_duration_since(self.last_update) > hold_time {
+            Duration::seconds(0)
         } else {
-            hold_time - self.last_update.elapsed()
+            hold_time - Utc::now().signed_duration_since(self.last_update)
         }
     }
 
@@ -46,11 +46,11 @@ impl HoldTimer {
     //    Hold time remaining is less than 2/3 of the total hold_timer
     //    which is 2x the Keepalive timer
     fn should_send_keepalive(&self) -> bool {
-        self.get_hold_time() < (2 * self.get_keepalive_timer())
+        self.get_hold_time().num_seconds() < (2 * self.get_keepalive_timer().num_seconds())
     }
 
     fn received_update(&mut self) {
-        self.last_update = Instant::now();
+        self.last_update = Utc::now();
     }
 }
 
@@ -76,7 +76,7 @@ impl fmt::Display for HoldTimer {
 pub struct Session {
     peer: Box<Peer>,
     protocol: MessageProtocol,
-    connect_time: Instant,
+    connect_time: DateTime<Utc>,
     hold_timer: HoldTimer,
     counts: MessageCounts,
 }
@@ -89,7 +89,7 @@ impl Session {
         Session {
             peer: Box::new(peer),
             protocol,
-            connect_time: Instant::now(),
+            connect_time: Utc::now(),
             hold_timer: HoldTimer::new(hold_timer),
             counts,
         }
@@ -114,12 +114,12 @@ impl Session {
                     asn: self.peer.remote_id.asn,
                     msg_received: Some(self.counts.received()),
                     msg_sent: Some(self.counts.sent()),
-                    connect_time: None,
+                    connect_time: Some(self.connect_time),
                     state: self.peer.get_state(),
                 };
                 db.update_peer(&status)
             })
-            .map_err(|err| eprintln!("{:?}", err))
+            .map_err(|err| error!("{:?}", err))
             .ok();
     }
 
@@ -141,7 +141,7 @@ impl fmt::Display for Session {
             f,
             "<Session {} uptime={} hold_time={}>",
             self.protocol.get_ref().peer_addr().unwrap(),
-            format_elapsed_time(self.connect_time.elapsed()),
+            format_elapsed_time(Utc::now().signed_duration_since(self.connect_time)),
             self.hold_timer,
         )
     }
@@ -206,7 +206,7 @@ impl Future for Session {
 
         // Check for hold time expiration (send keepalive if not expired)
         while let Ok(Async::Ready(_)) = self.hold_timer.poll() {
-            if self.hold_timer.get_hold_time() == Duration::from_secs(0) {
+            if self.hold_timer.get_hold_time() == Duration::seconds(0) {
                 trace!("Hold Time Expired [{}]: {}", self.hold_timer, self.peer);
                 let peer = self.reset_peer();
                 return Ok(Async::Ready(peer));
