@@ -4,8 +4,9 @@ use std::str::FromStr;
 
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Error as RError, Row};
+use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
+use super::db::DBTable;
 use crate::peer::PeerState;
 
 #[derive(Debug)]
@@ -30,6 +31,24 @@ impl PeerStatus {
             connect_time: None,
             state,
         }
+    }
+}
+
+impl DBTable for PeerStatus {
+    fn create_table(conn: &Connection) -> Result<usize> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS peers (
+                id INTEGER PRIMARY KEY,
+                neighbor TEXT NOT NULL UNIQUE,
+                router_id TEXT,
+                asn BIGINT NOT NULL,
+                msg_received BIGINT,
+                msg_sent BIGINT,
+                connect_time BIGINT,
+                state TEXT NOT NULL
+            )",
+            NO_PARAMS,
+        )
     }
 }
 

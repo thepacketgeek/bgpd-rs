@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
 use bgpd_lib::codec::{MessageCodec, MessageProtocol};
-use bgpd_lib::db::{PeerStatus, RouteDB};
+use bgpd_lib::db::{PeerStatus, DB};
 use bgpd_lib::peer::{Peer, PeerIdentifier, PeerState};
 use futures::future::{self, Either, Future};
 use log::{debug, error, info, trace, warn};
@@ -22,6 +22,18 @@ use crate::session::Session;
 
 type Peers = HashMap<IpAddr, Peer>;
 
+fn update_peer(peer: &Peer) -> Result<(), String> {
+    DB::new()
+        .and_then(|db| {
+            db.update_peer(&PeerStatus::new(
+                peer.addr,
+                peer.remote_id.asn,
+                peer.get_state(),
+            ))
+        })
+        .map_err(|err| format!("{}", err))
+}
+
 /// Receives a TcpStream from either an incoming connection or active polling,
 /// and processes the OPEN message for the correct peer (if configured)
 fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
@@ -30,15 +42,7 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
         move |peer: Option<Peer>| {
             if let Some(peer) = peer {
                 debug!("Adding {} back to idle peers", peer);
-                RouteDB::new()
-                    .map(|db| {
-                        db.update_peer(&PeerStatus::new(
-                            peer.addr,
-                            peer.remote_id.asn,
-                            peer.get_state(),
-                        ))
-                    })
-                    .ok();
+                update_peer(&peer).ok();
                 peers
                     .lock()
                     .map(|mut peers| {
@@ -77,15 +81,7 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
     if let Ok(mut peers) = peers.lock() {
         if let Some(peer) = peers.get_mut(&peer) {
             peer.update_state(PeerState::Active);
-            RouteDB::new()
-                .map(|db| {
-                    db.update_peer(&PeerStatus::new(
-                        peer.addr,
-                        peer.remote_id.asn,
-                        peer.get_state(),
-                    ))
-                })
-                .ok();
+            update_peer(&peer).ok();
         }
     }
     let builder = match peer {
@@ -106,15 +102,7 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
                 if let Ok(mut peers) = peers.lock() {
                     if let Some(peer) = peers.get_mut(&peer) {
                         peer.update_state(PeerState::Idle);
-                        RouteDB::new()
-                            .map(|db| {
-                                db.update_peer(&PeerStatus::new(
-                                    peer.addr,
-                                    peer.remote_id.asn,
-                                    peer.get_state(),
-                                ))
-                            })
-                            .ok();
+                        update_peer(&peer).ok();
                     }
                 }
             }
@@ -135,15 +123,7 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
             if let Ok(mut peers) = peers.lock() {
                 if let Some(peer) = peers.get_mut(&peer) {
                     peer.update_state(PeerState::Connect);
-                    RouteDB::new()
-                        .map(|db| {
-                            db.update_peer(&PeerStatus::new(
-                                peer.addr,
-                                peer.remote_id.asn,
-                                peer.get_state(),
-                            ))
-                        })
-                        .ok();
+                    update_peer(&peer).ok();
                 }
             }
             handle_new_connection(stream, peers.clone());
@@ -176,15 +156,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                 p.passive,
                 p.hold_timer,
             );
-            RouteDB::new()
-                .map(|db| {
-                    db.update_peer(&PeerStatus::new(
-                        peer.addr,
-                        peer.remote_id.asn,
-                        peer.get_state(),
-                    ))
-                })
-                .ok();
+            update_peer(&peer).ok();
             (peer.addr, peer)
         })
         .collect();
@@ -242,8 +214,8 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
 
     ctrlc::set_handler(move || {
         info!("Stopping BGP server...");
-        // Remove RouteDB
-        std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting RouteDB");
+        // Remove DB
+        std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting DB");
         std::process::exit(0);
     })
     .expect("Error setting Ctrl-C handler");

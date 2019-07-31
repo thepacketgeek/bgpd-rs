@@ -1,4 +1,4 @@
-use bgpd_lib::db::RouteDB;
+use bgpd_lib::db::DB;
 use structopt::StructOpt;
 
 mod display;
@@ -41,7 +41,7 @@ fn run(args: Args) -> Result<(), String> {
     match args.cmd {
         Command::Show(show) => match show {
             Show::Neighbors => {
-                let db = RouteDB::new().map_err(|err| format!("{}", err))?;
+                let db = DB::new().map_err(|err| format!("{}", err))?;
                 let peers = db.get_all_peers().map_err(|err| format!("{}", err))?;
                 let mut table = table::OutputTable::new();
                 for peer in peers.iter() {
@@ -58,7 +58,7 @@ fn run(args: Args) -> Result<(), String> {
             }
             Show::Routes(routes) => match routes {
                 Routes::Learned => {
-                    let routes = RouteDB::new()
+                    let routes = DB::new()
                         .map_err(|err| format!("{}", err))
                         .map(|db| db.get_all_routes())?
                         .map_err(|err| format!("{}", err))?;

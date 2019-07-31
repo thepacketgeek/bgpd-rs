@@ -3,12 +3,12 @@ use std::io::Error;
 
 use bgp_rs::Message;
 use bgpd_lib::codec::MessageProtocol;
-use bgpd_lib::db::{PeerStatus, RouteDB};
+use bgpd_lib::db::{PeerStatus, DB};
 use bgpd_lib::peer::{MessageCounts, Peer, PeerState};
 use bgpd_lib::utils::{format_elapsed_time, format_time_as_elapsed, get_elapsed_time};
 use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};
-use log::{debug, error, trace, warn};
+use log::{error, trace, warn};
 use tokio::prelude::*;
 
 struct HoldTimer {
@@ -97,7 +97,7 @@ impl Session {
 
     // Send a message, and flush the send buffer afterwards
     fn send_message(&mut self, message: Message) -> Result<(), Error> {
-        debug!("[{}] Outgoing: {:?}", self.peer.addr, message);
+        trace!("[{}] Outgoing: {:?}", self.peer.addr, message);
         self.protocol
             .start_send(message)
             .and_then(|_| self.protocol.poll_complete())?;
@@ -106,7 +106,7 @@ impl Session {
     }
 
     fn update_peer_status(&self) {
-        RouteDB::new()
+        DB::new()
             .and_then(|db| {
                 let status = PeerStatus {
                     neighbor: self.peer.addr,
@@ -126,7 +126,7 @@ impl Session {
     // Prep the peer to send back to the Idle Peers HashMap
     // In order to do that, reset the Session's Peer with an empty Peer struct
     fn reset_peer(&mut self) -> Peer {
-        RouteDB::new()
+        DB::new()
             .and_then(|db| db.remove_routes_for_peer(self.peer.remote_id.router_id.unwrap()))
             .ok();
         let mut peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
@@ -176,7 +176,7 @@ impl Future for Session {
         // Read new messages from the socket
         while let Ok(Async::Ready(data)) = self.protocol.poll() {
             if let Some(message) = data {
-                debug!("[{}] Incoming: {:?}", self.peer.addr, message);
+                trace!("[{}] Incoming: {:?}", self.peer.addr, message);
                 self.counts.increment_received();
                 self.peer
                     .process_message(message)

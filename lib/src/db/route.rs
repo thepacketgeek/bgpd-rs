@@ -6,8 +6,9 @@ use std::string::ToString;
 use bgp_rs::{ASPath, Origin, Segment};
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
-use rusqlite::{Error as RError, Result, Row};
+use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
+use super::db::DBTable;
 use crate::utils::{asn_to_dotted, ext_community_to_display};
 
 #[derive(Debug, Clone)]
@@ -118,6 +119,26 @@ pub struct Route {
     pub local_pref: Option<u32>,
     pub multi_exit_disc: Option<u32>,
     pub communities: CommunityList,
+}
+
+impl DBTable for Route {
+    fn create_table(conn: &Connection) -> Result<usize> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS routes (
+                id INTEGER PRIMARY KEY,
+                router_id TEXT NOT NULL,
+                received_at BIGINT NOT NULL,
+                prefix TEXT NOT NULL,
+                next_hop TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                as_path TEXT NOT NULL,
+                local_pref INTEGER,
+                metric INTEGER,
+                communities TEXT NOT NULL
+            )",
+            NO_PARAMS,
+        )
+    }
 }
 
 impl<'a> TryFrom<&Row<'a>> for Route {

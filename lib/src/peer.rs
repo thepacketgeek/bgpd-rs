@@ -10,7 +10,7 @@ use chrono::Utc;
 use log::{debug, trace, warn};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
-use crate::db::{Community, CommunityList, Route, RouteDB};
+use crate::db::{Community, CommunityList, Route, DB};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
 #[derive(Debug, Copy, Clone)]
@@ -301,10 +301,10 @@ impl Peer {
                             }
                         })
                         .collect();
-                    RouteDB::new().and_then(|db| db.insert_routes(routes)).ok();
+                    DB::new().and_then(|db| db.insert_routes(routes)).ok();
                 }
                 if update.is_withdrawal() {
-                    RouteDB::new()
+                    DB::new()
                         .and_then(|db| {
                             db.remove_prefixes_from_peer(
                                 self.remote_id.router_id.unwrap(),
