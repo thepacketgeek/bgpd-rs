@@ -8,7 +8,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result, NO_PARAMS};
 
 use super::route::as_path_to_string;
-use super::{PeerStatus, Route};
+use super::{DBTable, PeerStatus, Route};
 
 pub struct DB {
     conn: Connection,
@@ -157,8 +157,4 @@ impl DB {
         )?;
         Ok(())
     }
-}
-
-pub trait DBTable {
-    fn create_table(conn: &Connection) -> Result<usize>;
 }

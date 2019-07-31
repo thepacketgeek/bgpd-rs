@@ -8,7 +8,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
-use super::db::DBTable;
+use super::DBTable;
 use crate::utils::{asn_to_dotted, ext_community_to_display};
 
 #[derive(Debug, Clone)]

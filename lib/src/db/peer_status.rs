@@ -6,7 +6,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::Type;
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
-use super::db::DBTable;
+use super::DBTable;
 use crate::peer::PeerState;
 
 #[derive(Debug)]
