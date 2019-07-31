@@ -171,6 +171,12 @@ mod tests {
     }
 
     #[test]
+    fn test_format_time_as_elapsed() {
+        let interval = Utc::now() - Duration::seconds(14);
+        assert_eq!(format_time_as_elapsed(interval), "00:00:14".to_string());
+    }
+
+    #[test]
     fn test_maybe_string() {
         let value: Option<u64> = Some(5);
         assert_eq!(maybe_string(value.as_ref()), String::from("5"));

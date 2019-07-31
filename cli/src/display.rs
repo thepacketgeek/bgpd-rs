@@ -22,7 +22,6 @@ impl ToRow for (&PeerStatus, Option<usize>) {
             maybe_string(peer.msg_received.as_ref()),
             maybe_string(peer.msg_sent.as_ref()),
             if let Some(connect_time) = peer.connect_time {
-                println!("{:?}", connect_time);
                 format_time_as_elapsed(connect_time)
             } else {
                 String::from(EMPTY_VALUE)

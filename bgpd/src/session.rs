@@ -149,13 +149,13 @@ impl fmt::Display for Session {
 
 /// This is where a connected peer is managed.
 ///
-/// A `Session` is also a future representing completely processing the session.
+/// A `Session` is also a future for processing BGP messages and
+/// handling peer timeouts
 ///
-/// When a `Session` is created, the first line (representing the session's name)
-/// has already been read. When the socket closes, the `Session` future completes.
+/// When a `Session` is created, the first OPEN message has already been read.
+/// When the socket closes, the `Session` completes and the Peer struct
+/// is returned back to the Idle Peers (for future connections)
 ///
-///
-/// TODO: Session polls, updating it's peer status
 impl Future for Session {
     type Item = Peer;
     type Error = SessionError;
