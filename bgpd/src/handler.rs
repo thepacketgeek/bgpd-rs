@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
 use bgpd_lib::codec::{MessageCodec, MessageProtocol};
-use bgpd_lib::db::{Route, RouteDB};
+use bgpd_lib::db::{PeerStatus, RouteDB};
 use bgpd_lib::peer::{Peer, PeerIdentifier, PeerState};
 use futures::future::{self, Either, Future};
 use log::{debug, error, info, trace, warn};
@@ -18,18 +18,27 @@ use tokio::runtime::Runtime;
 use tokio::timer::Interval;
 
 use crate::config::ServerConfig;
-use crate::session::{Channel, Session, Tx};
+use crate::session::Session;
 
 type Peers = HashMap<IpAddr, Peer>;
 
 /// Receives a TcpStream from either an incoming connection or active polling,
 /// and processes the OPEN message for the correct peer (if configured)
-fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: Tx) {
+fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
     let peer_insert = {
         let peers = peers.clone();
         move |peer: Option<Peer>| {
             if let Some(peer) = peer {
                 debug!("Adding {} back to idle peers", peer);
+                RouteDB::new()
+                    .map(|db| {
+                        db.update_peer(&PeerStatus::new(
+                            peer.addr,
+                            peer.remote_id.asn,
+                            peer.get_state(),
+                        ))
+                    })
+                    .ok();
                 peers
                     .lock()
                     .map(|mut peers| {
@@ -49,7 +58,7 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: T
                 peer.update_state(PeerState::OpenSent);
                 if let Some(Message::Open(open)) = open {
                     let (updated_protocol, hold_timer) = peer.open_received(open, protocol);
-                    let new_session = Session::new(peer, updated_protocol, channel, hold_timer);
+                    let new_session = Session::new(peer, updated_protocol, hold_timer);
                     return Either::B(Some(new_session));
                 } else {
                     warn!("Invalid first packet received");
@@ -64,16 +73,19 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>, channel: T
     tokio::spawn(connection);
 }
 
-fn connect_to_peer(
-    peer: IpAddr,
-    source_addr: IpAddr,
-    dest_port: u16,
-    peers: Arc<Mutex<Peers>>,
-    channel: Tx,
-) {
+fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc<Mutex<Peers>>) {
     if let Ok(mut peers) = peers.lock() {
         if let Some(peer) = peers.get_mut(&peer) {
             peer.update_state(PeerState::Active);
+            RouteDB::new()
+                .map(|db| {
+                    db.update_peer(&PeerStatus::new(
+                        peer.addr,
+                        peer.remote_id.asn,
+                        peer.get_state(),
+                    ))
+                })
+                .ok();
         }
     }
     let builder = match peer {
@@ -94,6 +106,15 @@ fn connect_to_peer(
                 if let Ok(mut peers) = peers.lock() {
                     if let Some(peer) = peers.get_mut(&peer) {
                         peer.update_state(PeerState::Idle);
+                        RouteDB::new()
+                            .map(|db| {
+                                db.update_peer(&PeerStatus::new(
+                                    peer.addr,
+                                    peer.remote_id.asn,
+                                    peer.get_state(),
+                                ))
+                            })
+                            .ok();
                     }
                 }
             }
@@ -114,9 +135,18 @@ fn connect_to_peer(
             if let Ok(mut peers) = peers.lock() {
                 if let Some(peer) = peers.get_mut(&peer) {
                     peer.update_state(PeerState::Connect);
+                    RouteDB::new()
+                        .map(|db| {
+                            db.update_peer(&PeerStatus::new(
+                                peer.addr,
+                                peer.remote_id.asn,
+                                peer.get_state(),
+                            ))
+                        })
+                        .ok();
                 }
             }
-            handle_new_connection(stream, peers.clone(), channel);
+            handle_new_connection(stream, peers.clone());
             Ok(())
         })
         .map_err(handle_error)
@@ -128,8 +158,6 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     let socket = SocketAddr::from((addr, port));
     let listener = TcpListener::bind(&socket)?;
     let mut runtime = Runtime::new().unwrap();
-
-    let channel = Channel::new();
 
     // Peers are owned by a session when it begins
     // to be returned via Channel when the session drops
@@ -148,6 +176,15 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                 p.passive,
                 p.hold_timer,
             );
+            RouteDB::new()
+                .map(|db| {
+                    db.update_peer(&PeerStatus::new(
+                        peer.addr,
+                        peer.remote_id.asn,
+                        peer.get_state(),
+                    ))
+                })
+                .ok();
             (peer.addr, peer)
         })
         .collect();
@@ -157,7 +194,6 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     // TCP Listener task
     let server = {
         let peers = peers.clone();
-        let sender = channel.add_sender();
         listener
             .incoming()
             .for_each(move |stream: TcpStream| {
@@ -165,7 +201,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                     "Incoming new connection from {}",
                     stream.peer_addr().unwrap()
                 );
-                handle_new_connection(stream, peers.clone(), sender.clone());
+                handle_new_connection(stream, peers.clone());
                 Ok(())
             })
             .map_err(|err| error!("Incoming connection failed: {}", err))
@@ -177,7 +213,6 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     // Attempt to connect to configured & idle peers
     let connect = {
         let peers = peers.clone();
-        let sender = channel.add_sender();
         Interval::new(
             Instant::now() + Duration::from_secs(10), // Initial delay
             Duration::from_secs(15),                  // Interval
@@ -197,7 +232,7 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
                 })
                 .unwrap_or_else(|_| vec![]);
             for peer_addr in idle_peers {
-                connect_to_peer(peer_addr, addr, port, peers.clone(), sender.clone());
+                connect_to_peer(peer_addr, addr, port, peers.clone());
             }
             Ok(())
         })

@@ -1,18 +1,17 @@
 use std::convert::{From, Into, TryFrom, TryInto};
 use std::fmt;
-use std::net::IpAddr;
+use std::net::{AddrParseError, IpAddr};
+use std::str::FromStr;
 use std::string::ToString;
-use std::time::Instant;
 
 use bgp_rs::{ASPath, Origin, Prefix, Segment};
 use chrono::{DateTime, TimeZone, Utc};
 use log::{error, trace};
-use prettytable::{cell, row, Row as PTRow};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
-use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
+use rusqlite::{params, Connection, Error as RError, Result, Row, NO_PARAMS};
 
-use crate::peer::{PeerState};
-use crate::utils::{asn_to_dotted, ext_community_to_display, format_elapsed_time, maybe_string};
+use crate::peer::PeerState;
+use crate::utils::{asn_to_dotted, ext_community_to_display};
 
 #[derive(Debug, Clone)]
 pub enum Community {
@@ -172,58 +171,68 @@ pub struct PeerStatus {
     pub asn: u32,
     pub msg_received: Option<u64>,
     pub msg_sent: Option<u64>,
-    pub connect_time: Option<Instant>,
+    pub connect_time: Option<DateTime<Utc>>,
     pub state: PeerState,
-    pub prefixes_received: Option<u64>,
 }
 
-// impl<'a> TryFrom<&Row<'a>> for PeerStatus {
-//     type Error = RError;
+impl PeerStatus {
+    pub fn new(addr: IpAddr, asn: u32, state: PeerState) -> Self {
+        PeerStatus {
+            neighbor: addr,
+            router_id: None,
+            asn,
+            msg_received: None,
+            msg_sent: None,
+            connect_time: None,
+            state,
+        }
+    }
+}
 
-//     fn try_from(row: &Row) -> std::result::Result<Self, Self::Error> {
-//         let addr = row
-//             .get(0)
-//             .map(|prefix: String| prefix.parse::<IpAddr>())?
-//             .map_err(|err| RError::FromSqlConversionFailure(0, Type::Text, Box::new(err)))?;
-//         let router_id = row
-//             .get(1)
-//             .map(|prefix: Option<String>| match prefix {
-//                 Some(prefix) => prefix.parse::<IpAddr>()?,
-//                 None => None,
-//             })?
-//             .map_err(|err| RError::FromSqlConversionFailure(0, Type::Text, Box::new(err)))?;
-//         let remote_as = row
-//             .get(1)
-//             .map(|timestamp: i64| Utc.timestamp(timestamp, 0))?;
-//         let prefix = row
-//             .get(2)
-//             .map(|prefix: String| prefix.parse::<IpAddr>())?
-//             .map_err(|err| RError::FromSqlConversionFailure(2, Type::Text, Box::new(err)))?;
-//         let next_hop = row
-//             .get(3)
-//             .map(|next_hop: String| next_hop.parse::<IpAddr>())?
-//             .map_err(|err| RError::FromSqlConversionFailure(3, Type::Text, Box::new(err)))?;
-//         let origin = row
-//             .get(4)
-//             .map(|origin: String| Origin::try_from(&origin[..]))?
-//             .map_err(|err| RError::FromSqlConversionFailure(4, Type::Text, Box::new(err)))?;
-//         let as_path = row
-//             .get(5)
-//             .map(|as_path: String| as_path_from_string(&as_path))?
-//             .map_err(|err| RError::FromSqlConversionFailure(5, Type::Text, Box::new(err)))?;
-//         Ok(PeerStatus {
-//             received_from,
-//             received_at,
-//             prefix,
-//             next_hop,
-//             origin,
-//             as_path,
-//             local_pref: row.get(6)?,
-//             multi_exit_disc: row.get(7)?,
-//             communities: row.get(8)?,
-//         })
-//     }
-// }
+impl<'a> TryFrom<&Row<'a>> for PeerStatus {
+    type Error = RError;
+
+    fn try_from(row: &Row) -> std::result::Result<Self, Self::Error> {
+        let addr = row
+            .get(0)
+            .map(|prefix: String| prefix.parse::<IpAddr>())?
+            .map_err(|err| RError::FromSqlConversionFailure(0, Type::Text, Box::new(err)))?;
+        let router_id = row
+            .get(1)
+            .map(|prefix: Option<String>| match prefix {
+                Some(prefix) => {
+                    let addr = prefix.parse::<IpAddr>()?;
+                    Ok(Some(addr))
+                }
+                None => Ok(None),
+            })?
+            .map_err(|err: AddrParseError| {
+                RError::FromSqlConversionFailure(0, Type::Text, Box::new(err))
+            })?;
+
+        let maybe_u64 = |count: Option<i64>| match count {
+            Some(count) => Some(count as u64),
+            None => None,
+        };
+        let connect_time = row.get(5).map(|timestamp: Option<i64>| match timestamp {
+            Some(timestamp) => Some(Utc.timestamp(timestamp, 0)),
+            None => None,
+        })?;
+        let state = row
+            .get(6)
+            .map(|state: String| PeerState::from_str(&state))?
+            .map_err(|err| RError::FromSqlConversionFailure(6, Type::Text, Box::new(err)))?;
+        Ok(PeerStatus {
+            neighbor: addr,
+            router_id,
+            asn: row.get(2)?,
+            msg_received: row.get(3).map(maybe_u64)?,
+            msg_sent: row.get(4).map(maybe_u64)?,
+            connect_time,
+            state,
+        })
+    }
+}
 
 pub struct RouteDB {
     conn: Connection,
@@ -250,15 +259,13 @@ impl RouteDB {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS peers (
                 id INTEGER PRIMARY KEY,
-                router_id TEXT NOT NULL,
-                received_at BIGINT NOT NULL,
-                prefix TEXT NOT NULL,
-                next_hop TEXT NOT NULL,
-                origin TEXT NOT NULL,
-                as_path TEXT NOT NULL,
-                local_pref INTEGER,
-                metric INTEGER,
-                communities TEXT NOT NULL
+                neighbor TEXT NOT NULL UNIQUE,
+                router_id TEXT,
+                asn BIGINT NOT NULL,
+                msg_received BIGINT,
+                msg_sent BIGINT,
+                connect_time TEXT,
+                state TEXT NOT NULL
             )",
             NO_PARAMS,
         )?;
@@ -307,7 +314,7 @@ impl RouteDB {
         for route in routes {
             let as_path = as_path_to_string(&route.as_path);
             self.conn.execute(
-                r#"INSERT INTO routes
+                r#"REPLACE INTO routes
                     (router_id, received_at, prefix, next_hop,
                     origin, as_path, local_pref, metric, communities)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
@@ -346,6 +353,39 @@ impl RouteDB {
         self.conn.execute(
             "DELETE FROM routes WHERE router_id = ?1",
             &[&router_id.to_string()],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_peer(&self, status: &PeerStatus) -> Result<()> {
+        trace!("Updating peer {}", status.neighbor);
+        self.conn.execute(
+            r#"INSERT OR REPLACE INTO peers
+                (neighbor, router_id, asn, msg_received,
+                msg_sent, connect_time, state)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "#,
+            params![
+                &status.neighbor.to_string(),
+                status
+                    .router_id
+                    .map(|router_id| Some(router_id.to_string()))
+                    .unwrap_or(None),
+                &status.asn,
+                &status
+                    .msg_received
+                    .map(|count| Some(count as i64))
+                    .unwrap_or(None),
+                &status
+                    .msg_sent
+                    .map(|count| Some(count as i64))
+                    .unwrap_or(None),
+                &status
+                    .connect_time
+                    .map(|timestamp| Some(timestamp.timestamp().to_string()))
+                    .unwrap_or(None),
+                &status.state.to_string(),
+            ],
         )?;
         Ok(())
     }

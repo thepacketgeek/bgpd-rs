@@ -1,6 +1,5 @@
 use std::fmt;
 use std::io::Error;
-use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
@@ -8,54 +7,9 @@ use bgpd_lib::codec::MessageProtocol;
 use bgpd_lib::db::{PeerStatus, RouteDB};
 use bgpd_lib::peer::{MessageCounts, Peer, PeerState};
 use bgpd_lib::utils::format_elapsed_time;
-use futures::sync::mpsc;
 use futures::{Async, Poll, Stream};
 use log::{debug, error, trace, warn};
 use tokio::prelude::*;
-
-pub struct SessionStatus {
-    pub addr: IpAddr,
-    pub status: Option<PeerStatus>,
-}
-
-impl SessionStatus {
-    pub fn new(addr: IpAddr, status: Option<PeerStatus>) -> Self {
-        SessionStatus { addr, status }
-    }
-}
-
-pub type Tx = mpsc::UnboundedSender<SessionStatus>;
-pub type Rx = mpsc::UnboundedReceiver<SessionStatus>;
-
-pub struct Channel {
-    pub receiver: Rx,
-    sender: Tx,
-}
-
-impl Channel {
-    pub fn new() -> Channel {
-        let (sender, receiver) = mpsc::unbounded();
-        Channel { receiver, sender }
-    }
-
-    pub fn add_sender(&self) -> Tx {
-        self.sender.clone()
-    }
-}
-
-impl Future for Channel {
-    type Item = SessionStatus;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Error> {
-        // Check for status rows returned from Session
-        if let Async::Ready(Some(status)) = self.receiver.poll().unwrap() {
-            Ok(Async::Ready(status))
-        } else {
-            Ok(Async::NotReady)
-        }
-    }
-}
 
 struct HoldTimer {
     hold_timer: u16,
@@ -123,13 +77,12 @@ pub struct Session {
     peer: Box<Peer>,
     protocol: MessageProtocol,
     connect_time: Instant,
-    channel: Tx,
     hold_timer: HoldTimer,
     counts: MessageCounts,
 }
 
 impl Session {
-    pub fn new(peer: Peer, protocol: MessageProtocol, channel: Tx, hold_timer: u16) -> Session {
+    pub fn new(peer: Peer, protocol: MessageProtocol, hold_timer: u16) -> Session {
         let mut counts = MessageCounts::new();
         // Somewhat hacky, but this counts for
         counts.increment_received();
@@ -137,7 +90,6 @@ impl Session {
             peer: Box::new(peer),
             protocol,
             connect_time: Instant::now(),
-            channel,
             hold_timer: HoldTimer::new(hold_timer),
             counts,
         }
@@ -153,37 +105,27 @@ impl Session {
         Ok(())
     }
 
-    fn get_peer_status(&self) -> SessionStatus {
-        let prefixes_received = match self.peer.remote_id.router_id {
-            Some(router_id) => RouteDB::new()
-                .and_then(|db| db.get_routes_for_peer(router_id))
-                .map(|routes| Some(routes.len() as u64))
-                .map_err(|err| error!("Error fetching peer prefixes: {}", err))
-                .unwrap_or(None),
-            _ => None,
-        };
-        SessionStatus::new(
-            self.peer.addr,
-            Some(PeerStatus {
-                neighbor: self.peer.addr,
-                router_id: self.peer.remote_id.router_id,
-                asn: self.peer.remote_id.asn,
-                msg_received: Some(self.counts.received()),
-                msg_sent: Some(self.counts.sent()),
-                connect_time: Some(self.connect_time),
-                state: self.peer.get_state(),
-                prefixes_received,
-            }),
-        )
+    fn update_peer_status(&self) {
+        RouteDB::new()
+            .and_then(|db| {
+                let status = PeerStatus {
+                    neighbor: self.peer.addr,
+                    router_id: self.peer.remote_id.router_id,
+                    asn: self.peer.remote_id.asn,
+                    msg_received: Some(self.counts.received()),
+                    msg_sent: Some(self.counts.sent()),
+                    connect_time: None,
+                    state: self.peer.get_state(),
+                };
+                db.update_peer(&status)
+            })
+            .map_err(|err| eprintln!("{:?}", err))
+            .ok();
     }
 
-    // Send the peer back to the Idle Peers HashMap via the send channel
-    // In order to do that, replace the session peer with an empty Peer struct
-    fn replace_peer(&mut self) -> Peer {
-        self.channel
-            .start_send(SessionStatus::new(self.peer.addr, None))
-            .and_then(|_| self.channel.poll_complete())
-            .ok();
+    // Prep the peer to send back to the Idle Peers HashMap
+    // In order to do that, reset the Session's Peer with an empty Peer struct
+    fn reset_peer(&mut self) -> Peer {
         RouteDB::new()
             .and_then(|db| db.remove_routes_for_peer(self.peer.remote_id.router_id.unwrap()))
             .ok();
@@ -225,7 +167,7 @@ impl Future for Session {
             self.send_message(Message::Open(self.peer.create_open()))
                 .map_err(|e| SessionError {
                     error: e,
-                    peer: Some(self.replace_peer()),
+                    peer: Some(self.reset_peer()),
                 })
                 .ok();
             self.peer.update_state(PeerState::Established);
@@ -246,7 +188,7 @@ impl Future for Session {
                     })
                     .map_err(|e| SessionError {
                         error: e,
-                        peer: Some(self.replace_peer()),
+                        peer: Some(self.reset_peer()),
                     })
                     .ok();
                 self.hold_timer.received_update();
@@ -257,7 +199,7 @@ impl Future for Session {
                     self.peer.addr
                 );
                 // Before the Session is dropped, send peer back to idle peers
-                let peer = self.replace_peer();
+                let peer = self.reset_peer();
                 return Ok(Async::Ready(peer));
             }
         }
@@ -266,22 +208,19 @@ impl Future for Session {
         while let Ok(Async::Ready(_)) = self.hold_timer.poll() {
             if self.hold_timer.get_hold_time() == Duration::from_secs(0) {
                 trace!("Hold Time Expired [{}]: {}", self.hold_timer, self.peer);
-                let peer = self.replace_peer();
+                let peer = self.reset_peer();
                 return Ok(Async::Ready(peer));
             } else if self.hold_timer.should_send_keepalive() {
                 self.send_message(Message::KeepAlive)
                     .map_err(|e| SessionError {
                         error: e,
-                        peer: Some(self.replace_peer()),
+                        peer: Some(self.reset_peer()),
                     })
                     .ok();
             }
         }
 
-        self.channel
-            .start_send(self.get_peer_status())
-            .and_then(|_| self.channel.poll_complete())
-            .ok();
+        self.update_peer_status();
         trace!("Finished polling {}", self);
         Ok(Async::NotReady)
     }

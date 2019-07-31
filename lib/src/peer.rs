@@ -3,7 +3,7 @@ use std::convert::From;
 use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::Instant;
+use std::str::FromStr;
 
 use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
 use chrono::Utc;
@@ -34,6 +34,22 @@ impl fmt::Display for PeerState {
             PeerState::Established => "Established",
         };
         write!(f, "{}", word)
+    }
+}
+
+impl FromStr for PeerState {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Connect" => Ok(PeerState::Connect),
+            "Active" => Ok(PeerState::Active),
+            "Idle" => Ok(PeerState::Idle),
+            "OpenSent" => Ok(PeerState::OpenSent),
+            "OpenConfirm" => Ok(PeerState::OpenConfirm),
+            "Established" => Ok(PeerState::Established),
+            _ => Err(Error::from(ErrorKind::NotFound)),
+        }
     }
 }
 
@@ -338,7 +354,6 @@ impl fmt::Display for Peer {
         )
     }
 }
-
 
 #[derive(Debug)]
 pub struct MessageCounts {
