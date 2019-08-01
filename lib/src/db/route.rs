@@ -1,23 +1,21 @@
-use std::convert::{From, Into, TryFrom, TryInto};
+use std::convert::{From, TryFrom};
 use std::fmt;
 use std::net::IpAddr;
 use std::string::ToString;
 
-use bgp_rs::{ASPath, Origin, Prefix, Segment};
+use bgp_rs::{ASPath, Origin, Segment};
 use chrono::{DateTime, TimeZone, Utc};
-use log::{error, trace};
-use prettytable::{cell, row, Row as PTRow};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 
-use crate::display::ToRow;
-use crate::utils::{asn_to_dotted, ext_community_to_display, format_elapsed_time, maybe_string};
+use super::DBTable;
+use crate::utils::{asn_to_dotted, ext_community_to_display};
 
 #[derive(Debug, Clone)]
 pub enum Community {
     // TODO: Consider another datamodel for these
-    //       size of the enum is much larger than the most typical
-    //       use case (STANDARD)
+    //       size of the max variant (EXTENDED) is much larger than
+    //       the most typical use case (STANDARD)
     STANDARD(u32),
     EXTENDED(u64),
     // TODO
@@ -74,7 +72,6 @@ impl fmt::Display for CommunityList {
     }
 }
 
-
 /// Encode a CommunityList for SQL Storage
 /// Will prepend initial for Community Type (for decoding back to struct)
 /// E.g.
@@ -93,7 +90,6 @@ impl ToSql for CommunityList {
         Ok(ToSqlOutput::from(result))
     }
 }
-
 
 /// Decode SQL back to CommunityList
 /// See `impl ToSql for CommunityList` for details
@@ -123,6 +119,26 @@ pub struct Route {
     pub local_pref: Option<u32>,
     pub multi_exit_disc: Option<u32>,
     pub communities: CommunityList,
+}
+
+impl DBTable for Route {
+    fn create_table(conn: &Connection) -> Result<usize> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS routes (
+                id INTEGER PRIMARY KEY,
+                router_id TEXT NOT NULL,
+                received_at BIGINT NOT NULL,
+                prefix TEXT NOT NULL,
+                next_hop TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                as_path TEXT NOT NULL,
+                local_pref INTEGER,
+                metric INTEGER,
+                communities TEXT NOT NULL
+            )",
+            NO_PARAMS,
+        )
+    }
 }
 
 impl<'a> TryFrom<&Row<'a>> for Route {
@@ -166,176 +182,7 @@ impl<'a> TryFrom<&Row<'a>> for Route {
     }
 }
 
-impl ToRow for Route {
-    fn columns() -> PTRow {
-        row![
-            "Neighbor",
-            "AFI",
-            "Prefix",
-            "Next Hop",
-            "Age",
-            "Origin",
-            "Local Pref",
-            "Metric",
-            "AS Path",
-            "Communities"
-        ]
-    }
-
-    fn to_row(&self) -> PTRow {
-        let duration = Utc::now().signed_duration_since(self.received_at);
-        let afi = match self.prefix {
-            IpAddr::V4(_) => "IPv4",
-            IpAddr::V6(_) => "IPv6",
-        };
-        let elapsed = duration
-            .to_std()
-            .map(format_elapsed_time)
-            .unwrap_or_else(|_| duration.to_string());
-        // TODO, this just displays the first segment as space delimited ASNs
-        // Should it display more?
-        let as_path = match self.as_path.segments.iter().next() {
-            Some(segment) => {
-                let path = match segment {
-                    Segment::AS_SEQUENCE(sequence) => sequence,
-                    Segment::AS_SET(set) => set,
-                };
-                Some(
-                    path.iter()
-                        .map(std::string::ToString::to_string)
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                )
-            }
-            None => None,
-        };
-        row![
-            self.received_from,
-            afi,
-            self.prefix,
-            self.next_hop,
-            elapsed,
-            String::from(&self.origin),
-            maybe_string(self.local_pref.as_ref()),
-            maybe_string(self.multi_exit_disc.as_ref()),
-            maybe_string(as_path.as_ref()),
-            &self.communities,
-        ]
-    }
-}
-
-pub struct RouteDB {
-    conn: Connection,
-}
-
-impl RouteDB {
-    pub fn new() -> Result<RouteDB> {
-        let conn = Connection::open("/tmp/bgpd.sqlite3")?;
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS routes (
-                id INTEGER PRIMARY KEY,
-                router_id TEXT NOT NULL,
-                received_at BIGINT NOT NULL,
-                prefix TEXT NOT NULL,
-                next_hop TEXT NOT NULL,
-                origin TEXT NOT NULL,
-                as_path TEXT NOT NULL,
-                local_pref INTEGER,
-                metric INTEGER,
-                communities TEXT NOT NULL
-            )",
-            NO_PARAMS,
-        )?;
-        Ok(RouteDB { conn })
-    }
-
-    pub fn get_all_routes(&self) -> Result<Vec<Route>> {
-        let mut stmt = self.conn.prepare(
-            r#"SELECT
-                router_id, received_at, prefix, next_hop,
-                origin, as_path, local_pref, metric, communities
-            FROM routes ORDER BY router_id ASC, prefix ASC"#,
-        )?;
-        let route_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
-        let mut routes: Vec<Route> = Vec::new();
-        for route in route_iter {
-            match route {
-                Ok(route) => routes.push(route),
-                Err(err) => error!("Error parsing route in RouteDB: {}", err),
-            }
-        }
-        Ok(routes)
-    }
-
-    pub fn get_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
-        trace!("Getting routes for peer {}", router_id);
-        let mut stmt = self.conn.prepare(
-            r#"SELECT
-                router_id, received_at, prefix, next_hop,
-                origin, as_path, local_pref, metric, communities
-            FROM routes WHERE router_id = ?1"#,
-        )?;
-        let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
-        let mut routes: Vec<Route> = Vec::new();
-        for route in route_iter {
-            match route {
-                Ok(route) => routes.push(route),
-                Err(err) => error!("Error parsing route in RouteDB: {}", err),
-            }
-        }
-        Ok(routes)
-    }
-
-    pub fn insert_routes(&self, routes: Vec<Route>) -> Result<()> {
-        trace!("Inserting routes: {}", routes.len());
-        for route in routes {
-            let as_path = as_path_to_string(&route.as_path);
-            self.conn.execute(
-                r#"INSERT INTO routes
-                    (router_id, received_at, prefix, next_hop,
-                    origin, as_path, local_pref, metric, communities)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
-                &[
-                    &route.received_from.to_string(),
-                    &route.received_at.timestamp().to_string(),
-                    &route.prefix.to_string(),
-                    &route.next_hop.to_string(),
-                    &((&route.origin).into()),
-                    &as_path,
-                    &route.local_pref as &ToSql,
-                    &route.multi_exit_disc as &ToSql,
-                    &route.communities as &ToSql,
-                ],
-            )?;
-            trace!("\t{:?}", route);
-        }
-        Ok(())
-    }
-
-    pub fn remove_prefixes_from_peer(&self, router_id: IpAddr, prefixes: &[Prefix]) -> Result<()> {
-        trace!("Removing prefixes [{}]: {}", router_id, prefixes.len());
-        for prefix in prefixes {
-            let addr = IpAddr::from(prefix);
-            self.conn.execute(
-                "DELETE FROM routes WHERE router_id = ?1 AND prefix = ?2",
-                &[&router_id.to_string(), &addr.to_string()],
-            )?;
-            trace!("\t{:?}", prefix);
-        }
-        Ok(())
-    }
-
-    pub fn remove_routes_for_peer(&self, router_id: IpAddr) -> Result<()> {
-        trace!("Removing routes from peer {}", router_id);
-        self.conn.execute(
-            "DELETE FROM routes WHERE router_id = ?1",
-            &[&router_id.to_string()],
-        )?;
-        Ok(())
-    }
-}
-
-fn as_path_to_string(as_path: &ASPath) -> String {
+pub fn as_path_to_string(as_path: &ASPath) -> String {
     fn asns_to_string(asns: &[u32]) -> String {
         asns.iter()
             .map(std::string::ToString::to_string)

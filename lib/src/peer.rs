@@ -3,14 +3,14 @@ use std::convert::From;
 use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
+use std::str::FromStr;
 
 use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
 use chrono::Utc;
 use log::{debug, trace, warn};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
-use crate::db::{Community, CommunityList, Route, RouteDB};
-use crate::display::StatusRow;
+use crate::db::{Community, CommunityList, Route, DB};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
 #[derive(Debug, Copy, Clone)]
@@ -34,6 +34,22 @@ impl fmt::Display for PeerState {
             PeerState::Established => "Established",
         };
         write!(f, "{}", word)
+    }
+}
+
+impl FromStr for PeerState {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Connect" => Ok(PeerState::Connect),
+            "Active" => Ok(PeerState::Active),
+            "Idle" => Ok(PeerState::Idle),
+            "OpenSent" => Ok(PeerState::OpenSent),
+            "OpenConfirm" => Ok(PeerState::OpenConfirm),
+            "Established" => Ok(PeerState::Established),
+            _ => Err(Error::from(ErrorKind::NotFound)),
+        }
     }
 }
 
@@ -285,10 +301,10 @@ impl Peer {
                             }
                         })
                         .collect();
-                    RouteDB::new().and_then(|db| db.insert_routes(routes)).ok();
+                    DB::new().and_then(|db| db.insert_routes(routes)).ok();
                 }
                 if update.is_withdrawal() {
-                    RouteDB::new()
+                    DB::new()
                         .and_then(|db| {
                             db.remove_prefixes_from_peer(
                                 self.remote_id.router_id.unwrap(),
@@ -339,21 +355,7 @@ impl fmt::Display for Peer {
     }
 }
 
-impl From<&Peer> for StatusRow {
-    fn from(peer: &Peer) -> Self {
-        StatusRow {
-            neighbor: peer.addr,
-            asn: peer.remote_id.asn,
-            msg_received: None,
-            msg_sent: None,
-            connect_time: None,
-            state: peer.state,
-            prefixes_received: None,
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MessageCounts {
     received: u64,
     sent: u64,
@@ -361,10 +363,7 @@ pub struct MessageCounts {
 
 impl MessageCounts {
     pub fn new() -> Self {
-        MessageCounts {
-            received: 0,
-            sent: 0,
-        }
+        MessageCounts::default()
     }
 
     pub fn received(&self) -> u64 {

@@ -54,36 +54,6 @@ impl ServerConfig {
         debug!("Using config: {:?}", config);
         Ok(config)
     }
-
-    /// Get the path for the peers status output
-    /// Derived from the root `output_dir`
-    pub fn path_for_peers(&self) -> String {
-        self.output_dir
-            .join("bgpd.peers")
-            .to_str()
-            .unwrap()
-            .to_string()
-    }
-
-    /// Get the path for the raw learned routes output
-    /// Derived from the root `output_dir`
-    pub fn path_for_learned_routes(&self) -> String {
-        self.output_dir
-            .join("bgpd.learned_routes")
-            .to_str()
-            .unwrap()
-            .to_string()
-    }
-
-    /// Get the path for the RIB output
-    /// Derived from the root `output_dir`
-    pub fn path_for_rib(&self) -> String {
-        self.output_dir
-            .join("bgpd.rib")
-            .to_str()
-            .unwrap()
-            .to_string()
-    }
 }
 
 #[cfg(test)]
@@ -93,7 +63,7 @@ mod tests {
 
     #[test]
     fn test_parse_config() {
-        let config = ServerConfig::from_file("./examples/config.toml").unwrap();
+        let config = ServerConfig::from_file("../examples/config.toml").unwrap();
         assert_eq!(config.router_id, IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)));
         assert_eq!(config.default_as, 65000);
         assert_eq!(config.peers.len(), 3);
@@ -105,11 +75,5 @@ mod tests {
         assert_eq!(peer.local_as, Some(65000));
         assert_eq!(peer.hold_timer, 180);
         assert!(!peer.passive);
-    }
-
-    #[test]
-    fn test_path_for_peers() {
-        let config = ServerConfig::from_file("./examples/config.toml").unwrap();
-        assert_eq!(config.path_for_peers(), String::from("./bgpd.peers"));
     }
 }

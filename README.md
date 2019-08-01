@@ -15,8 +15,9 @@ Totally just a POC, mostly for my own amusement
 - [x] Attempt connection to unestablished peers
 - [x] Process UPDATE messages, parsing with capabilities
 - [x] Store received routes locally
+- [x] CLI interface for viewing peer status, routes, etc.
 - [ ] Advertise routes (specified somewhere?)
-- [ ] API/CLI interface for viewing peer status, routes, etc.
+- [ ] API/CLI interface for interacting with BGPd (advertising, refreshing peers, etc.)
 
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
@@ -39,24 +40,31 @@ remote_as = 65000
 local_as = 100
 ```
 
-# View Peer Summary
-By default peer info is output in the following files:
-- Peer session summary: `./bgpd.peers`
-- Learned routes: `./bgpd.learned_routes`
+# View BGPd Information
+Use `bgpd-cli` for viewing peer & route information:
 
-You can view current peer session status via these files:
-
+Current peer session status:
 ```
-[~/bgpd-rs/] $ cat ./bgpd.peers
+[~/bgpd-rs/] $ cargo run --bin cli -- show neighbors
 Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
  ::0.0.0.2    65000  6        3        00:00:11  Established  0
  127.0.0.2    65000  0        0        ---       Idle         0
  172.16.20.1  65000  0        0        ---       Idle         0
  127.0.0.3    65000  0        0        ---       Idle         0
 ```
- > Tip: Use the `watch` command for keeping this view up-to-date
 
-![Peer Status](examples/status.png)
+Learned routes:
+```
+[~/bgpd-rs/] $ cargo build
+[~/bgpd-rs/] $ ./targets/debug/cli show routes learned
+Neighbor  AFI   Prefix     Next Hop   Age       Origin  Local Pref  Metric  AS Path  Communities
+ 2.2.2.2   IPv4  2.10.0.0   127.0.0.2  00:00:10  IGP     100         10               404 65000.10
+ 2.2.2.2   IPv4  2.100.0.0  127.0.0.2  00:00:10  IGP     100         500              target:65000:1.1.1.1 redirect:65000:100
+ 2.2.2.2   IPv4  2.200.0.0  127.0.0.2  00:00:10  IGP     100                 100 200
+ 3.3.3.3   IPv4  3.100.0.0  127.0.0.3  00:00:09  IGP     100                 300
+ 3.3.3.3   IPv4  3.200.0.0  127.0.0.3  00:00:09  IGP     300
+```
+ > Tip: Use the `watch` command for keeping this view up-to-date
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
@@ -95,17 +103,17 @@ And then running `bgpd` as follows:
 
 Using IPv6
 ```
-$ cargo run --  -a "::1" -p 1179 ./examples/config.toml -vv
+$ cargo run --bin bgpd --  -a "::1" -p 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
 ```
-$ cargo run -- -p 1179 ./examples/config.toml -vv
+$ cargo run --bin bgpd -- -p 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
 ```
 $ cargo build
-$ sudo ./targets/debug ./examples/config.toml -vv
+$ sudo ./targets/debug/bgpd ./examples/config.toml -vv
 ```
