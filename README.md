@@ -40,11 +40,10 @@ remote_as = 65000
 local_as = 100
 ```
 
-# View Peer Summary
-Use the `bgpd-cli` for viewing peer & route information:
+# View BGPd Information
+Use `bgpd-cli` for viewing peer & route information:
 
-You can view current peer session status and learned routes:
-
+Current peer session status:
 ```
 [~/bgpd-rs/] $ cargo run --bin cli -- show neighbors
 Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
@@ -54,6 +53,7 @@ Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
  127.0.0.3    65000  0        0        ---       Idle         0
 ```
 
+Learned routes:
 ```
 [~/bgpd-rs/] $ cargo build
 [~/bgpd-rs/] $ ./targets/debug/cli show routes learned
