@@ -134,10 +134,9 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
     tokio::spawn(connect);
 }
 
-pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error> {
+pub fn serve(addr: IpAddr, port: u16, config: ServerConfig, mut runtime: Runtime) -> Result<Runtime, Error> {
     let socket = SocketAddr::from((addr, port));
     let listener = TcpListener::bind(&socket)?;
-    let mut runtime = Runtime::new().unwrap();
 
     // Peers are owned by a session when it begins
     // to be returned via Channel when the session drops
@@ -220,6 +219,5 @@ pub fn serve(addr: IpAddr, port: u16, config: ServerConfig) -> Result<(), Error>
     })
     .expect("Error setting Ctrl-C handler");
 
-    runtime.shutdown_on_idle().wait().unwrap();
-    Ok(())
+    Ok(runtime)
 }

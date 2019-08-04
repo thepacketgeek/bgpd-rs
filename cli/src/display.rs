@@ -8,26 +8,24 @@ use prettytable::{cell, row, Row};
 
 use crate::table::ToRow;
 
-impl ToRow for (&PeerStatus, Option<usize>) {
+impl ToRow for &PeerStatus {
     fn columns() -> Row {
-        row!["Neighbor", "AS", "MsgRcvd", "MsgSent", "Uptime", "State", "PfxRcd"]
+        row!["Neighbor", "AS", "MsgRcvd", "MsgSent", "Uptime", "State"]
     }
 
     fn to_row(&self) -> Row {
-        let peer = self.0;
-        let prefixes_received = self.1;
         row![
-            peer.neighbor.to_string(),
-            asn_to_dotted(peer.asn),
-            maybe_string(peer.msg_received.as_ref()),
-            maybe_string(peer.msg_sent.as_ref()),
-            if let Some(connect_time) = peer.connect_time {
+            self.neighbor.to_string(),
+            asn_to_dotted(self.asn),
+            maybe_string(self.msg_received.as_ref()),
+            maybe_string(self.msg_sent.as_ref()),
+            if let Some(connect_time) = self.connect_time {
                 format_time_as_elapsed(connect_time)
             } else {
                 String::from(EMPTY_VALUE)
             },
-            peer.state.to_string(),
-            maybe_string(prefixes_received.as_ref()),
+            self.state.to_string(),
+            // maybe_string(prefixes_received.as_ref()),
         ]
     }
 }

@@ -5,17 +5,19 @@ use std::str::FromStr;
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::Type;
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
+use serde::{Serialize, Deserialize};
 
 use super::DBTable;
 use crate::peer::PeerState;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct PeerStatus {
     pub neighbor: IpAddr,
     pub router_id: Option<IpAddr>,
     pub asn: u32,
     pub msg_received: Option<u64>,
     pub msg_sent: Option<u64>,
+    // #[serde(with = "my_date_format")]
     pub connect_time: Option<DateTime<Utc>>,
     pub state: PeerState,
 }

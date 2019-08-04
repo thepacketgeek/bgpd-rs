@@ -4,10 +4,14 @@ use std::io::Result;
 use std::net::IpAddr;
 
 use env_logger::Builder;
+use futures::future::Future;
+use hyper::service::service_fn;
+use hyper::Server;
 use log::{debug, info, LevelFilter};
 use structopt::StructOpt;
+use tokio::runtime::Runtime;
 
-use bgpd::{serve, ServerConfig};
+use bgpd::{handle_api_request, serve, ServerConfig};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd", rename_all = "kebab-case")]
@@ -44,7 +48,19 @@ fn main() -> Result<()> {
     let config = ServerConfig::from_file(&args.config_path)?;
     debug!("Found {} peers in {}", config.peers.len(), args.config_path);
 
-    serve(args.address, args.port, config)?;
+    let mut runtime = Runtime::new().unwrap();
+
+    let addr = ([127, 0, 0, 1], 8080).into();
+
+    let server = Server::bind(&addr)
+        .serve(|| service_fn(handle_api_request))
+        .map_err(|e| eprintln!("server error: {}", e));
+
+    runtime.spawn(server);
+    println!("HERE!");
+    let mut runtime = serve(args.address, args.port, config, runtime)?;
+
+    runtime.shutdown_on_idle().wait().unwrap();
 
     Ok(())
 }

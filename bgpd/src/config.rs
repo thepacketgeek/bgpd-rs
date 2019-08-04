@@ -4,7 +4,7 @@ use std::net::IpAddr;
 use std::path;
 
 use log::debug;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use toml;
 
 struct Defaults {}

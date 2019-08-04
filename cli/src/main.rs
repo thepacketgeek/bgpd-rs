@@ -1,8 +1,11 @@
-use bgpd_lib::db::DB;
+use bgpd_lib::db::{PeerStatus, Route};
 use structopt::StructOpt;
+use serde_json;
+use reqwest::Url;
 
 mod display;
 mod table;
+
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd-cli", rename_all = "kebab-case")]
@@ -10,6 +13,10 @@ mod table;
 struct Args {
     #[structopt(subcommand)]
     cmd: Command,
+    #[structopt(short, long, default_value="127.0.0.1")]
+    host: String,
+    #[structopt(short, long, default_value="8080")]
+    port: u32,
 }
 
 #[derive(StructOpt, Debug)]
@@ -37,31 +44,32 @@ enum Routes {
     Learned,
 }
 
+
+fn fetch_url(uri: Url) -> String {
+    reqwest::get(uri).and_then(|mut resp| resp.text()).map_err(|err| eprintln!("{}", err)).unwrap()
+}
+
+
 fn run(args: Args) -> Result<(), String> {
+    let base_url = {
+        let base = format!("http://{}:{}", args.host, args.port);
+        Url::parse(&base).expect("Must provide valid host & port")
+    };
     match args.cmd {
         Command::Show(show) => match show {
             Show::Neighbors => {
-                let db = DB::new().map_err(|err| format!("{}", err))?;
-                let peers = db.get_all_peers().map_err(|err| format!("{}", err))?;
+                let body = fetch_url(base_url.join("show/neighbors").unwrap());
+                let peers: Vec<PeerStatus> = serde_json::from_str(&body).unwrap();
                 let mut table = table::OutputTable::new();
                 for peer in peers.iter() {
-                    let learned_routes = match peer.router_id {
-                        Some(router_id) => db
-                            .get_routes_for_peer(router_id)
-                            .map(|routes| Some(routes.len())),
-                        None => Ok(None),
-                    }
-                    .map_err(|err| format!("{}", err))?;
-                    table.add_row(&(peer, learned_routes));
+                    table.add_row(&peer);
                 }
                 table.print();
             }
             Show::Routes(routes) => match routes {
                 Routes::Learned => {
-                    let routes = DB::new()
-                        .map_err(|err| format!("{}", err))
-                        .map(|db| db.get_all_routes())?
-                        .map_err(|err| format!("{}", err))?;
+                    let body = fetch_url(base_url.join("show/routes/learned").unwrap());
+                    let routes: Vec<Route> = serde_json::from_str(&body).unwrap();
                     let mut table = table::OutputTable::new();
                     for route in routes.iter() {
                         table.add_row(route);

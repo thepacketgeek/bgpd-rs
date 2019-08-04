@@ -114,6 +114,13 @@ impl DB {
                 msg_sent, connect_time, state
             FROM peers ORDER BY neighbor ASC"#,
         )?;
+        // let learned_routes = match peer.router_id {
+        //     Some(router_id) => db
+        //         .get_routes_for_peer(router_id)
+        //         .map(|routes| Some(routes.len())),
+        //     None => Ok(None),
+        // }
+        // .map_err(|err| format!("{}", err))?;
         let peer_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
         let mut peers: Vec<PeerStatus> = Vec::new();
         for peer in peer_iter {

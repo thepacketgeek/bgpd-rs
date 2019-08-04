@@ -8,12 +8,13 @@ use std::str::FromStr;
 use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
 use chrono::Utc;
 use log::{debug, trace, warn};
+use serde::{Serialize, Deserialize};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
 use crate::db::{Community, CommunityList, Route, DB};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub enum PeerState {
     Connect,
     Active,

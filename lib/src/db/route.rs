@@ -7,11 +7,12 @@ use bgp_rs::{ASPath, Origin, Segment};
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
+use serde::{Serialize, Deserialize};
 
 use super::DBTable;
 use crate::utils::{asn_to_dotted, ext_community_to_display};
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Community {
     // TODO: Consider another datamodel for these
     //       size of the max variant (EXTENDED) is much larger than
@@ -49,7 +50,7 @@ impl fmt::Display for Community {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommunityList {
     communities: Vec<Community>,
 }
@@ -108,13 +109,15 @@ impl FromSql for CommunityList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Route {
     pub received_from: IpAddr, // router_id
     pub received_at: DateTime<Utc>,
     pub prefix: IpAddr,
     pub next_hop: IpAddr,
+    #[serde(with = "serialize_origin")]
     pub origin: Origin,
+    #[serde(with = "serialize_as_path")]
     pub as_path: ASPath,
     pub local_pref: Option<u32>,
     pub multi_exit_disc: Option<u32>,
@@ -237,6 +240,59 @@ fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::P
         }
     }
     Ok(ASPath { segments })
+}
+
+mod serialize_as_path {
+    use serde::{self, Deserialize, Serializer, Deserializer};
+    use bgp_rs::ASPath;
+    use super::{as_path_from_string, as_path_to_string};
+
+    pub fn serialize<S>(
+        as_path: &ASPath,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&as_path_to_string(as_path))
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<ASPath, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        as_path_from_string(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+mod serialize_origin {
+    use serde::{self, Deserialize, Serializer, Deserializer};
+    use bgp_rs::Origin;
+    use std::convert::TryFrom;
+    use std::string::ToString;
+
+    pub fn serialize<S>(
+        origin: &Origin,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&String::from(origin))
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Origin, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Origin::try_from(&s[..]).map_err(serde::de::Error::custom)
+    }
 }
 
 #[cfg(test)]

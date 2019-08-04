@@ -1,6 +1,8 @@
+pub mod api;
 mod config;
-mod handler;
+pub mod handler;
 mod session;
 
 pub use config::ServerConfig;
 pub use handler::serve;
+pub use api::handler::handle_api_request;
