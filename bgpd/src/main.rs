@@ -58,7 +58,7 @@ fn main() -> Result<()> {
 
     runtime.spawn(server);
     println!("HERE!");
-    let mut runtime = serve(args.address, args.port, config, runtime)?;
+    let runtime = serve(args.address, args.port, config, runtime)?;
 
     runtime.shutdown_on_idle().wait().unwrap();
 

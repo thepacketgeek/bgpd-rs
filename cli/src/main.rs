@@ -5,6 +5,8 @@ use structopt::StructOpt;
 mod display;
 mod table;
 
+use display::{PeerSummaryRow, RouteRow};
+
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd-cli", rename_all = "kebab-case")]
 /// CLI to interact with BGPd
@@ -58,23 +60,37 @@ fn run(args: Args) -> Result<(), String> {
             Show::Neighbors => {
                 let body = fetch_url(base_url.join("show/neighbors").unwrap())?;
                 let peers: Value = serde_json::from_str(&body[..]).unwrap();
-                // let peers: Vec<PeerSummary> = serde_json::from_str(&body).unwrap();
-                // let mut table = table::OutputTable::new();
-                // for peer in peers.iter() {
-                //     table.add_row(&peer);
-                // }
-                // table.print();
-                println!("{:?}", peers);
+                let peers = match peers {
+                    Value::Array(peers) => {
+                        let peers: Vec<PeerSummaryRow> =
+                            peers.into_iter().map(|peer| PeerSummaryRow(peer)).collect();
+                        peers
+                    }
+                    _ => unreachable!(),
+                };
+                let mut table = table::OutputTable::new();
+                for peer in peers.iter() {
+                    table.add_row(&peer).map_err(|err| format!("{}", err))?;
+                }
+                table.print();
             }
             Show::Routes(routes) => match routes {
                 Routes::Learned => {
                     let body = fetch_url(base_url.join("show/routes/learned").unwrap())?;
-                    // let routes: Vec<Route> = serde_json::from_str(&body).unwrap();
-                    // let mut table = table::OutputTable::new();
-                    // for route in routes.iter() {
-                    //     table.add_row(route);
-                    // }
-                    // table.print();
+                    let routes: Value = serde_json::from_str(&body[..]).unwrap();
+                    let routes = match routes {
+                        Value::Array(routes) => {
+                            let routes: Vec<RouteRow> =
+                                routes.into_iter().map(|peer| RouteRow(peer)).collect();
+                            routes
+                        }
+                        _ => unreachable!(),
+                    };
+                    let mut table = table::OutputTable::new();
+                    for route in routes.iter() {
+                        table.add_row(&route).map_err(|err| format!("{}", err))?;
+                    }
+                    table.print();
                 }
             },
         },

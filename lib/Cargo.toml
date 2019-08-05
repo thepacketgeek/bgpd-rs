@@ -9,4 +9,5 @@ name = "bgpd_lib"
 path = "src/lib.rs"
 
 [dependencies]
+bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs", branch = "message-attrs" }
 chrono = { version = "0.4.7", features = ["serde"] }

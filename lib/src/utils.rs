@@ -1,4 +1,5 @@
-use chrono::{DateTime, Duration, Utc};
+use bgp_rs::{ASPath, Segment};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use std::net::IpAddr;
 
 pub const EMPTY_VALUE: &str = "";
@@ -46,6 +47,63 @@ pub fn asn_to_dotted(asn: u32) -> String {
     }
 }
 
+pub fn as_path_to_string(as_path: &ASPath) -> String {
+    fn asns_to_string(asns: &[u32]) -> String {
+        asns.iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<String>>()
+            .join(",")
+    }
+
+    fn segment_to_string(segment: &Segment) -> String {
+        match segment {
+            Segment::AS_SEQUENCE(sequence) => format!("seq:{}", asns_to_string(&sequence)),
+            Segment::AS_SET(set) => format!("set:{}", asns_to_string(&set)),
+        }
+    }
+
+    as_path
+        .segments
+        .iter()
+        .map(segment_to_string)
+        .collect::<Vec<String>>()
+        .join(";")
+}
+
+pub fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::ParseIntError> {
+    fn segment_from_string(
+        segment: &str,
+    ) -> std::result::Result<Option<Segment>, std::num::ParseIntError> {
+        if let Some(i) = segment.find(':') {
+            let (segment_type, paths) = segment.split_at(i + 1);
+            let paths = paths
+                .split(',')
+                .collect::<Vec<&str>>()
+                .into_iter()
+                .map(|asn: &str| asn.parse::<u32>().unwrap())
+                .collect();
+            if segment_type.starts_with("seq") {
+                Ok(Some(Segment::AS_SEQUENCE(paths)))
+            } else {
+                Ok(Some(Segment::AS_SET(paths)))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    let parts = as_path.split(';').collect::<Vec<&str>>();
+    let mut segments: Vec<Segment> = Vec::new();
+    for part in parts {
+        match segment_from_string(part) {
+            Ok(Some(segment)) => segments.push(segment),
+            Err(err) => return Err(err),
+            _ => continue,
+        }
+    }
+    Ok(ASPath { segments })
+}
+
 pub fn ext_community_to_display(value: u64) -> String {
     let c_type: u16 = ((value >> 48) & 0xff) as u16;
     match c_type {
@@ -89,7 +147,10 @@ fn fit_with_remainder(dividend: u64, divisor: u64) -> (u64, u64) {
     (fit, remainder)
 }
 
-pub fn get_elapsed_time(time: DateTime<Utc>) -> Duration {
+pub fn get_elapsed_time<Tz>(time: DateTime<Tz>) -> Duration
+where
+    Tz: TimeZone,
+{
     Utc::now().signed_duration_since(time)
 }
 
@@ -102,16 +163,11 @@ pub fn format_elapsed_time(elapsed: Duration) -> String {
 }
 
 /// Given a timestamp, get the elapsed time and return formatted string
-pub fn format_time_as_elapsed(time: DateTime<Utc>) -> String {
-    format_elapsed_time(get_elapsed_time(time))
-}
-
-pub fn maybe_string<T>(item: Option<&T>) -> String
+pub fn format_time_as_elapsed<Tz>(time: DateTime<Tz>) -> String
 where
-    T: ToString,
+    Tz: TimeZone,
 {
-    item.map(std::string::ToString::to_string)
-        .unwrap_or_else(|| String::from(EMPTY_VALUE))
+    format_elapsed_time(get_elapsed_time(time))
 }
 
 #[cfg(test)]
@@ -155,6 +211,31 @@ mod tests {
     }
 
     #[test]
+    fn test_as_path_from_string() {
+        let as_path = as_path_from_string("seq:100,200").unwrap();
+        if let Segment::AS_SEQUENCE(seq) = &as_path.segments[0] {
+            assert_eq!(seq, &vec![100 as u32, 200 as u32]);
+        } else {
+            panic!("Segment sequence did not match!");
+        }
+
+        let as_path = as_path_from_string("").unwrap();
+        assert_eq!(as_path.segments.len(), 0);
+    }
+
+    #[test]
+    fn test_as_path_to_string() {
+        let as_path = ASPath {
+            segments: vec![Segment::AS_SEQUENCE(vec![100, 200])],
+        };
+        let as_path_str = as_path_to_string(&as_path);
+        assert_eq!(&as_path_str, "seq:100,200");
+
+        let as_path_str = as_path_to_string(&ASPath { segments: vec![] });
+        assert_eq!(&as_path_str, "");
+    }
+
+    #[test]
     fn test_format_elapsed_time() {
         assert_eq!(
             format_elapsed_time(Duration::seconds(30)),
@@ -174,16 +255,6 @@ mod tests {
     fn test_format_time_as_elapsed() {
         let interval = Utc::now() - Duration::seconds(14);
         assert_eq!(format_time_as_elapsed(interval), "00:00:14".to_string());
-    }
-
-    #[test]
-    fn test_maybe_string() {
-        let value: Option<u64> = Some(5);
-        assert_eq!(maybe_string(value.as_ref()), String::from("5"));
-        let value: Option<&str> = Some("test");
-        assert_eq!(maybe_string(value.as_ref()), String::from("test"));
-        let value: Option<&str> = None;
-        assert_eq!(maybe_string(value.as_ref()), String::from(EMPTY_VALUE));
     }
 
     #[test]

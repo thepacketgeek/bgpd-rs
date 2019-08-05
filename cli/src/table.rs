@@ -4,7 +4,7 @@ use prettytable::{format, Row, Table};
 
 pub trait ToRow {
     fn columns() -> Row;
-    fn to_row(&self) -> Row;
+    fn to_row(&self) -> Result<Row, String>;
 }
 
 pub struct OutputTable<T: ToRow> {
@@ -37,8 +37,11 @@ where
         }
     }
 
-    pub fn add_row(&mut self, row: &T) {
-        self.inner.add_row(row.to_row());
+    pub fn add_row(&mut self, row: &T) -> Result<(), String> {
+        row.to_row()
+            .map(|row| self.inner.add_row(row))
+            .map_err(|err| format!("{}", err))?;
+        Ok(())
     }
 
     pub fn print(&self) {
