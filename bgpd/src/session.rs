@@ -3,17 +3,15 @@ use std::io::{Error, ErrorKind};
 use std::net::IpAddr;
 
 use bgp_rs::{Identifier, Message, NLRIEncoding, PathAttribute};
-use bgpd_lib::codec::MessageProtocol;
-use bgpd_lib::models::{
-    Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary, Route,
-};
 use bgpd_lib::utils::{format_elapsed_time, format_time_as_elapsed, get_elapsed_time};
 use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};
 use log::{error, trace, warn};
 use tokio::prelude::*;
 
+use crate::codec::MessageProtocol;
 use crate::db::DB;
+use crate::models::{Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary, Route};
 
 struct HoldTimer {
     hold_timer: u16,

@@ -1,7 +1,9 @@
-pub mod api;
+mod api;
+mod codec;
 mod config;
 mod db;
-pub mod handler;
+mod handler;
+mod models;
 mod session;
 
 pub use api::handler::handle_api_request;

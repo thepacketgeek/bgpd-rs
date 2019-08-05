@@ -5,14 +5,12 @@ use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
-use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
-use chrono::Utc;
-use log::{debug, trace, warn};
+use bgp_rs::{Open, OpenParameter};
+use bgpd_lib::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
-use crate::models::{Community, CommunityList, Route};
-use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub enum PeerState {

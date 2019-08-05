@@ -2,14 +2,13 @@ use std::io::{Error, Read};
 use std::result::Result;
 
 use bgp_rs::{Capabilities, Message, Open, OpenParameter, Reader};
+use bgpd_lib::utils::*;
 use byteorder::{NetworkEndian, ReadBytesExt};
 use bytes::{BufMut, BytesMut};
 use log::warn;
 use tokio::net::TcpStream;
 use tokio_codec::{Decoder, Encoder, Framed};
 use twoway::find_bytes;
-
-use crate::utils::*;
 
 pub type MessageProtocol = Framed<TcpStream, MessageCodec>;
 

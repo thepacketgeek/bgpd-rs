@@ -4,9 +4,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use super::codec::{MessageCodec, MessageProtocol};
+use super::models::{Peer, PeerIdentifier, PeerState, PeerSummary};
 use bgp_rs::Message;
-use bgpd_lib::codec::{MessageCodec, MessageProtocol};
-use bgpd_lib::models::{Peer, PeerIdentifier, PeerState, PeerSummary};
 use futures::future::{self, Either, Future};
 use log::{debug, error, info, trace, warn};
 use net2::TcpBuilder;

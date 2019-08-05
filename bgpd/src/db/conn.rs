@@ -2,8 +2,8 @@ use std::convert::{From, TryInto};
 use std::net::IpAddr;
 use std::string::ToString;
 
+use crate::models::{as_path_to_string, PeerSummary, Route};
 use bgp_rs::Prefix;
-use bgpd_lib::models::{as_path_to_string, PeerSummary, Route};
 use log::{error, trace};
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result, NO_PARAMS};

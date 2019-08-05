@@ -1,57 +1,15 @@
-use std::convert::{From, TryFrom};
-use std::fmt;
+use std::convert::TryFrom;
 use std::net::IpAddr;
-use std::string::ToString;
 
 use bgp_rs::{ASPath, Origin, Segment};
 use chrono::{DateTime, TimeZone, Utc};
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, Type, ValueRef};
+use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{asn_to_dotted, ext_community_to_display};
+use bgpd_lib::utils::{asn_to_dotted, ext_community_to_display};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Community {
-    // TODO: Consider another datamodel for these
-    //       size of the max variant (EXTENDED) is much larger than
-    //       the most typical use case (STANDARD)
-    STANDARD(u32),
-    EXTENDED(u64),
-    // TODO
-    // LARGE(Vec<(u32, u32, u32)>),
-    // IPV6_EXTENDED((u8, u8, Ipv6Addr, u16)),
-}
-
-impl fmt::Display for Community {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Community::STANDARD(value) => write!(f, "{}", asn_to_dotted(*value)),
-            Community::EXTENDED(value) => write!(f, "{}", ext_community_to_display(*value)),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CommunityList {
-    communities: Vec<Community>,
-}
-
-impl CommunityList {
-    pub fn new(communities: Vec<Community>) -> Self {
-        CommunityList { communities }
-    }
-}
-
-impl fmt::Display for CommunityList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let communities = self
-            .communities
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(" ");
-        write!(f, "{}", communities)
-    }
-}
+use super::community::CommunityList;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Route {
@@ -165,6 +123,47 @@ mod serialize_origin {
     {
         let s = String::deserialize(deserializer)?;
         Origin::try_from(&s[..]).map_err(serde::de::Error::custom)
+    }
+}
+
+impl<'a> TryFrom<&Row<'a>> for Route {
+    type Error = RError;
+
+    fn try_from(row: &Row) -> std::result::Result<Self, Self::Error> {
+        let received_from = row
+            .get(0)
+            .map(|prefix: String| prefix.parse::<IpAddr>())?
+            .map_err(|err| RError::FromSqlConversionFailure(0, Type::Text, Box::new(err)))?;
+        let received_at = row
+            .get(1)
+            .map(|timestamp: i64| Utc.timestamp(timestamp, 0))?;
+        let prefix = row
+            .get(2)
+            .map(|prefix: String| prefix.parse::<IpAddr>())?
+            .map_err(|err| RError::FromSqlConversionFailure(2, Type::Text, Box::new(err)))?;
+        let next_hop = row
+            .get(3)
+            .map(|next_hop: String| next_hop.parse::<IpAddr>())?
+            .map_err(|err| RError::FromSqlConversionFailure(3, Type::Text, Box::new(err)))?;
+        let origin = row
+            .get(4)
+            .map(|origin: String| Origin::try_from(&origin[..]))?
+            .map_err(|err| RError::FromSqlConversionFailure(4, Type::Text, Box::new(err)))?;
+        let as_path = row
+            .get(5)
+            .map(|as_path: String| as_path_from_string(&as_path))?
+            .map_err(|err| RError::FromSqlConversionFailure(5, Type::Text, Box::new(err)))?;
+        Ok(Route {
+            received_from,
+            received_at,
+            prefix,
+            next_hop,
+            origin,
+            as_path,
+            local_pref: row.get(6)?,
+            multi_exit_disc: row.get(7)?,
+            communities: row.get(8)?,
+        })
     }
 }
 

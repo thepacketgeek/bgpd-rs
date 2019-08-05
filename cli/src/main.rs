@@ -1,6 +1,5 @@
-use bgpd_lib::models::{PeerSummary, Route};
 use reqwest::Url;
-use serde_json;
+use serde_json::{self, Value};
 use structopt::StructOpt;
 
 mod display;
@@ -58,22 +57,24 @@ fn run(args: Args) -> Result<(), String> {
         Command::Show(show) => match show {
             Show::Neighbors => {
                 let body = fetch_url(base_url.join("show/neighbors").unwrap())?;
-                let peers: Vec<PeerSummary> = serde_json::from_str(&body).unwrap();
-                let mut table = table::OutputTable::new();
-                for peer in peers.iter() {
-                    table.add_row(&peer);
-                }
-                table.print();
+                let peers: Value = serde_json::from_str(&body[..]).unwrap();
+                // let peers: Vec<PeerSummary> = serde_json::from_str(&body).unwrap();
+                // let mut table = table::OutputTable::new();
+                // for peer in peers.iter() {
+                //     table.add_row(&peer);
+                // }
+                // table.print();
+                println!("{:?}", peers);
             }
             Show::Routes(routes) => match routes {
                 Routes::Learned => {
                     let body = fetch_url(base_url.join("show/routes/learned").unwrap())?;
-                    let routes: Vec<Route> = serde_json::from_str(&body).unwrap();
-                    let mut table = table::OutputTable::new();
-                    for route in routes.iter() {
-                        table.add_row(route);
-                    }
-                    table.print();
+                    // let routes: Vec<Route> = serde_json::from_str(&body).unwrap();
+                    // let mut table = table::OutputTable::new();
+                    // for route in routes.iter() {
+                    //     table.add_row(route);
+                    // }
+                    // table.print();
                 }
             },
         },
