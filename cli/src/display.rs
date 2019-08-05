@@ -2,20 +2,30 @@ use std::convert::From;
 use std::net::IpAddr;
 
 use bgp_rs::Segment;
-use bgpd_lib::db::{PeerStatus, Route};
+use bgpd_lib::models::{PeerSummary, Route};
 use bgpd_lib::utils::{asn_to_dotted, format_time_as_elapsed, maybe_string, EMPTY_VALUE};
 use prettytable::{cell, row, Row};
 
 use crate::table::ToRow;
 
-impl ToRow for &PeerStatus {
+impl ToRow for &PeerSummary {
     fn columns() -> Row {
-        row!["Neighbor", "AS", "MsgRcvd", "MsgSent", "Uptime", "State"]
+        row![
+            "Neighbor",
+            "Router ID",
+            "AS",
+            "MsgRcvd",
+            "MsgSent",
+            "Uptime",
+            "State",
+            "PfxRcd"
+        ]
     }
 
     fn to_row(&self) -> Row {
         row![
             self.neighbor.to_string(),
+            maybe_string(self.router_id.as_ref()),
             asn_to_dotted(self.asn),
             maybe_string(self.msg_received.as_ref()),
             maybe_string(self.msg_sent.as_ref()),
@@ -25,7 +35,7 @@ impl ToRow for &PeerStatus {
                 String::from(EMPTY_VALUE)
             },
             self.state.to_string(),
-            // maybe_string(prefixes_received.as_ref()),
+            maybe_string(self.prefixes_received.as_ref()),
         ]
     }
 }

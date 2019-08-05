@@ -6,8 +6,7 @@ use std::time::{Duration, Instant};
 
 use bgp_rs::Message;
 use bgpd_lib::codec::{MessageCodec, MessageProtocol};
-use bgpd_lib::db::{PeerStatus, DB};
-use bgpd_lib::peer::{Peer, PeerIdentifier, PeerState};
+use bgpd_lib::models::{Peer, PeerIdentifier, PeerState, PeerSummary};
 use futures::future::{self, Either, Future};
 use log::{debug, error, info, trace, warn};
 use net2::TcpBuilder;
@@ -18,6 +17,7 @@ use tokio::runtime::Runtime;
 use tokio::timer::Interval;
 
 use crate::config::ServerConfig;
+use crate::db::DB;
 use crate::session::Session;
 
 type Peers = HashMap<IpAddr, Peer>;
@@ -25,7 +25,7 @@ type Peers = HashMap<IpAddr, Peer>;
 fn update_peer(peer: &Peer) -> Result<(), String> {
     DB::new()
         .and_then(|db| {
-            db.update_peer(&PeerStatus::new(
+            db.update_peer(&PeerSummary::new(
                 peer.addr,
                 peer.remote_id.asn,
                 peer.get_state(),
@@ -134,7 +134,12 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
     tokio::spawn(connect);
 }
 
-pub fn serve(addr: IpAddr, port: u16, config: ServerConfig, mut runtime: Runtime) -> Result<Runtime, Error> {
+pub fn serve(
+    addr: IpAddr,
+    port: u16,
+    config: ServerConfig,
+    mut runtime: Runtime,
+) -> Result<Runtime, Error> {
     let socket = SocketAddr::from((addr, port));
     let listener = TcpListener::bind(&socket)?;
 

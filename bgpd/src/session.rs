@@ -1,15 +1,17 @@
 use std::fmt;
 use std::io::Error;
+use std::new::IpAddr;
 
-use bgp_rs::Message;
+use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
 use bgpd_lib::codec::MessageProtocol;
-use bgpd_lib::db::{PeerStatus, DB};
-use bgpd_lib::peer::{MessageCounts, Peer, PeerState};
+use bgpd_lib::models::{Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary};
 use bgpd_lib::utils::{format_elapsed_time, format_time_as_elapsed, get_elapsed_time};
 use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};
 use log::{error, trace, warn};
 use tokio::prelude::*;
+
+use crate::db::DB;
 
 struct HoldTimer {
     hold_timer: u16,
@@ -116,6 +118,7 @@ impl Session {
                     msg_sent: Some(self.counts.sent()),
                     connect_time: Some(self.connect_time),
                     state: self.peer.get_state(),
+                    prefixes_received: None,
                 };
                 db.update_peer(&status)
             })
@@ -178,8 +181,7 @@ impl Future for Session {
             if let Some(message) = data {
                 trace!("[{}] Incoming: {:?}", self.peer.addr, message);
                 self.counts.increment_received();
-                self.peer
-                    .process_message(message)
+                process_message(&peer, message)
                     .and_then(|resp| {
                         if let Some(data) = resp {
                             self.send_message(data)?;
@@ -247,4 +249,146 @@ impl From<Error> for SessionError {
     fn from(error: Error) -> Self {
         SessionError { error, peer: None }
     }
+}
+
+pub fn process_message(peer: &mut Peer, message: Message) -> Result<Option<Message>, Error> {
+    trace!("{}: {:?}", peer.remote_id, message);
+    let response = match message {
+        Message::KeepAlive => Some(Message::KeepAlive),
+        Message::Update(update) => {
+            if update.is_announcement() {
+                let origin = update
+                    .get(Identifier::ORIGIN)
+                    .map(|attr| {
+                        if let PathAttribute::ORIGIN(origin) = attr {
+                            origin.clone()
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .expect("ORIGIN must be present in Update");
+                let next_hop = update
+                    .get(Identifier::NEXT_HOP)
+                    .map(|attr| {
+                        if let PathAttribute::NEXT_HOP(next_hop) = attr {
+                            *next_hop
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .expect("NEXT_HOP must be present in Update");
+                let as_path = update
+                    .get(Identifier::AS_PATH)
+                    .map(|attr| {
+                        if let PathAttribute::AS_PATH(as_path) = attr {
+                            as_path.clone()
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .expect("AS_PATH must be present in Update");
+                let local_pref = update
+                    .get(Identifier::LOCAL_PREF)
+                    .map(|attr| {
+                        if let PathAttribute::LOCAL_PREF(local_pref) = attr {
+                            Some(*local_pref)
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unwrap_or(None);
+                let multi_exit_disc = update
+                    .get(Identifier::MULTI_EXIT_DISC)
+                    .map(|attr| {
+                        if let PathAttribute::MULTI_EXIT_DISC(metric) = attr {
+                            Some(*metric)
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unwrap_or(None);
+                let communities = update
+                    .get(Identifier::COMMUNITY)
+                    .map(|attr| {
+                        if let PathAttribute::COMMUNITY(communities) = attr {
+                            communities
+                                .iter()
+                                .map(|c| Community::STANDARD(*c))
+                                .collect::<Vec<Community>>()
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unwrap_or_else(|| vec![]);
+
+                let ext_communities = update
+                    .get(Identifier::EXTENDED_COMMUNITIES)
+                    .map(|attr| {
+                        if let PathAttribute::EXTENDED_COMMUNITIES(communities) = attr {
+                            communities
+                                .iter()
+                                .map(|c| Community::EXTENDED(*c))
+                                .collect::<Vec<Community>>()
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unwrap_or_else(|| vec![]);
+
+                let community_list = CommunityList::new(
+                    communities
+                        .into_iter()
+                        .chain(ext_communities.into_iter())
+                        .collect(),
+                );
+
+                let routes: Vec<Route> = update
+                    .announced_routes
+                    .iter()
+                    .map(|route| match route {
+                        NLRIEncoding::IP(prefix) => Some(prefix),
+                        _ => None,
+                    })
+                    .filter(std::option::Option::is_some)
+                    .map(std::option::Option::unwrap)
+                    .map(|prefix| {
+                        let addr = IpAddr::from(prefix);
+                        Route {
+                            received_from: peer.remote_id.router_id.unwrap(),
+                            received_at: Utc::now(),
+                            prefix: addr,
+                            next_hop,
+                            origin: origin.clone(),
+                            as_path: as_path.clone(),
+                            local_pref,
+                            multi_exit_disc,
+                            communities: community_list.clone(),
+                        }
+                    })
+                    .collect();
+                DB::new().and_then(|db| db.insert_routes(routes)).ok();
+            }
+            if update.is_withdrawal() {
+                DB::new()
+                    .and_then(|db| {
+                        db.remove_prefixes_from_peer(
+                            peer.remote_id.router_id.unwrap(),
+                            &update.withdrawn_routes,
+                        )
+                    })
+                    .ok();
+            }
+            None
+        }
+        Message::Notification(notification) => {
+            warn!("{} NOTIFICATION: {}", peer.remote_id, notification);
+            None
+        }
+        Message::RouteRefresh(_) => None,
+        _ => {
+            warn!("{} Unexpected message {:?}", peer.remote_id, message);
+            return Err(Error::from(ErrorKind::InvalidInput));
+        }
+    };
+    Ok(response)
 }

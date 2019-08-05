@@ -1,4 +1,3 @@
 pub mod codec;
-pub mod db;
-pub mod peer;
+pub mod models;
 pub mod utils;

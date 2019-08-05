@@ -1,11 +1,10 @@
-use bgpd_lib::db::{PeerStatus, Route};
-use structopt::StructOpt;
-use serde_json;
+use bgpd_lib::models::{PeerSummary, Route};
 use reqwest::Url;
+use serde_json;
+use structopt::StructOpt;
 
 mod display;
 mod table;
-
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd-cli", rename_all = "kebab-case")]
@@ -13,9 +12,9 @@ mod table;
 struct Args {
     #[structopt(subcommand)]
     cmd: Command,
-    #[structopt(short, long, default_value="127.0.0.1")]
+    #[structopt(short, long, default_value = "127.0.0.1")]
     host: String,
-    #[structopt(short, long, default_value="8080")]
+    #[structopt(short, long, default_value = "8080")]
     port: u32,
 }
 
@@ -44,11 +43,11 @@ enum Routes {
     Learned,
 }
 
-
-fn fetch_url(uri: Url) -> String {
-    reqwest::get(uri).and_then(|mut resp| resp.text()).map_err(|err| eprintln!("{}", err)).unwrap()
+fn fetch_url(uri: Url) -> Result<String, String> {
+    reqwest::get(uri)
+        .and_then(|mut resp| resp.text())
+        .map_err(|err| format!("{}", err))
 }
-
 
 fn run(args: Args) -> Result<(), String> {
     let base_url = {
@@ -58,8 +57,8 @@ fn run(args: Args) -> Result<(), String> {
     match args.cmd {
         Command::Show(show) => match show {
             Show::Neighbors => {
-                let body = fetch_url(base_url.join("show/neighbors").unwrap());
-                let peers: Vec<PeerStatus> = serde_json::from_str(&body).unwrap();
+                let body = fetch_url(base_url.join("show/neighbors").unwrap())?;
+                let peers: Vec<PeerSummary> = serde_json::from_str(&body).unwrap();
                 let mut table = table::OutputTable::new();
                 for peer in peers.iter() {
                     table.add_row(&peer);
@@ -68,7 +67,7 @@ fn run(args: Args) -> Result<(), String> {
             }
             Show::Routes(routes) => match routes {
                 Routes::Learned => {
-                    let body = fetch_url(base_url.join("show/routes/learned").unwrap());
+                    let body = fetch_url(base_url.join("show/routes/learned").unwrap())?;
                     let routes: Vec<Route> = serde_json::from_str(&body).unwrap();
                     let mut table = table::OutputTable::new();
                     for route in routes.iter() {
