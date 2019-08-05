@@ -47,7 +47,7 @@ enum Routes {
 fn fetch_url(uri: Url) -> Result<String, String> {
     reqwest::get(uri)
         .and_then(|mut resp| resp.text())
-        .map_err(|err| format!("{}", err))
+        .map_err(|err| err.to_string())
 }
 
 fn run(args: Args) -> Result<(), String> {
@@ -63,14 +63,14 @@ fn run(args: Args) -> Result<(), String> {
                 let peers = match peers {
                     Value::Array(peers) => {
                         let peers: Vec<PeerSummaryRow> =
-                            peers.into_iter().map(|peer| PeerSummaryRow(peer)).collect();
+                            peers.into_iter().map(PeerSummaryRow).collect();
                         peers
                     }
                     _ => unreachable!(),
                 };
                 let mut table = table::OutputTable::new();
                 for peer in peers.iter() {
-                    table.add_row(&peer).map_err(|err| format!("{}", err))?;
+                    table.add_row(&peer).map_err(|err| err.to_string())?;
                 }
                 table.print();
             }
@@ -80,15 +80,14 @@ fn run(args: Args) -> Result<(), String> {
                     let routes: Value = serde_json::from_str(&body[..]).unwrap();
                     let routes = match routes {
                         Value::Array(routes) => {
-                            let routes: Vec<RouteRow> =
-                                routes.into_iter().map(|peer| RouteRow(peer)).collect();
+                            let routes: Vec<RouteRow> = routes.into_iter().map(RouteRow).collect();
                             routes
                         }
                         _ => unreachable!(),
                     };
                     let mut table = table::OutputTable::new();
                     for route in routes.iter() {
-                        table.add_row(&route).map_err(|err| format!("{}", err))?;
+                        table.add_row(&route).map_err(|err| err.to_string())?;
                     }
                     table.print();
                 }

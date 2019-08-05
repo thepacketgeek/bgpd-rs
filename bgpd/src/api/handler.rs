@@ -110,7 +110,7 @@ pub fn handle_api_request(req: Request<Body>) -> BoxFut {
                                             Segment::AS_SET(asns) => asns,
                                         };
                                         asns.iter()
-                                            .map(|asn| asn.to_string())
+                                            .map(std::string::ToString::to_string)
                                             .collect::<Vec<String>>()
                                             .join(" ")
                                     })

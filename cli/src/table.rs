@@ -40,7 +40,7 @@ where
     pub fn add_row(&mut self, row: &T) -> Result<(), String> {
         row.to_row()
             .map(|row| self.inner.add_row(row))
-            .map_err(|err| format!("{}", err))?;
+            .map_err(|err| err.to_string())?;
         Ok(())
     }
 
