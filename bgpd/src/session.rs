@@ -1,10 +1,10 @@
 use std::fmt;
-use std::io::Error;
-use std::new::IpAddr;
+use std::io::{Error, ErrorKind};
+use std::net::IpAddr;
 
 use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
 use bgpd_lib::codec::MessageProtocol;
-use bgpd_lib::models::{Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary};
+use bgpd_lib::models::{Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary, Route};
 use bgpd_lib::utils::{format_elapsed_time, format_time_as_elapsed, get_elapsed_time};
 use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};
@@ -107,10 +107,10 @@ impl Session {
         Ok(())
     }
 
-    fn update_peer_status(&self) {
+    fn update_peer_summary(&self) {
         DB::new()
             .and_then(|db| {
-                let status = PeerStatus {
+                let summary = PeerSummary {
                     neighbor: self.peer.addr,
                     router_id: self.peer.remote_id.router_id,
                     asn: self.peer.remote_id.asn,
@@ -120,7 +120,7 @@ impl Session {
                     state: self.peer.get_state(),
                     prefixes_received: None,
                 };
-                db.update_peer(&status)
+                db.update_peer(&summary)
             })
             .map_err(|err| error!("{:?}", err))
             .ok();
@@ -181,7 +181,7 @@ impl Future for Session {
             if let Some(message) = data {
                 trace!("[{}] Incoming: {:?}", self.peer.addr, message);
                 self.counts.increment_received();
-                process_message(&peer, message)
+                process_message(&mut self.peer, message)
                     .and_then(|resp| {
                         if let Some(data) = resp {
                             self.send_message(data)?;
@@ -222,7 +222,7 @@ impl Future for Session {
             }
         }
 
-        self.update_peer_status();
+        self.update_peer_summary();
         trace!("Finished polling {}", self);
         Ok(Async::NotReady)
     }

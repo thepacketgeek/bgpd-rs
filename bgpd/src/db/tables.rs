@@ -1,8 +1,9 @@
-use super::DBTable;
-
-use bgpd_lib::models::{PeerSummary, Route};
+use bgpd_lib::models::{Community, CommunityList, PeerSummary, Route};
 use chrono::{DateTime, TimeZone, Utc};
+use rusqlite::types::{ToSql, Type};
 use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
+
+use super::DBTable;
 
 impl DBTable for Route {
     fn create_table(conn: &Connection) -> Result<usize> {

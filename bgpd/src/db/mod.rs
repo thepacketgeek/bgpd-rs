@@ -1,6 +1,8 @@
 use rusqlite::{Connection, Result};
 
 mod conn;
+mod tables;
+
 pub use conn::DB;
 
 pub trait DBTable {

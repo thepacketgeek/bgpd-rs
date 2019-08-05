@@ -3,11 +3,12 @@ use std::net::IpAddr;
 use std::string::ToString;
 
 use bgp_rs::Prefix;
+use bgpd_lib::models::{PeerSummary, Route, as_path_to_string};
 use log::{error, trace};
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result, NO_PARAMS};
 
-use super::{DBTable, PeerSummary, Route, as_path_to_string};
+use super::DBTable;
 
 pub struct DB {
     conn: Connection,
