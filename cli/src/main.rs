@@ -84,6 +84,6 @@ fn run(args: Args) -> Result<(), String> {
 fn main() {
     let args = Args::from_args();
     if let Err(err) = run(args) {
-        eprintln!("Error: {}", err.to_string());
+        eprintln!("{}", err.to_string());
     }
 }

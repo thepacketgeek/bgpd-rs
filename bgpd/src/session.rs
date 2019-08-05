@@ -2,9 +2,11 @@ use std::fmt;
 use std::io::{Error, ErrorKind};
 use std::net::IpAddr;
 
-use bgp_rs::{Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute};
+use bgp_rs::{Identifier, Message, NLRIEncoding, PathAttribute};
 use bgpd_lib::codec::MessageProtocol;
-use bgpd_lib::models::{Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary, Route};
+use bgpd_lib::models::{
+    Community, CommunityList, MessageCounts, Peer, PeerState, PeerSummary, Route,
+};
 use bgpd_lib::utils::{format_elapsed_time, format_time_as_elapsed, get_elapsed_time};
 use chrono::{DateTime, Duration, Utc};
 use futures::{Async, Poll, Stream};

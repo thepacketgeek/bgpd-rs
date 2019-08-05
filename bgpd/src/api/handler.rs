@@ -2,7 +2,6 @@ use futures::future;
 use hyper::rt::Future;
 use hyper::{Body, Request, Response};
 use hyper::{Method, StatusCode};
-use serde::{Deserialize, Serialize};
 
 use crate::db::DB;
 use log::trace;

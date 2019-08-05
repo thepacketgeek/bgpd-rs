@@ -91,7 +91,7 @@ pub fn as_path_to_string(as_path: &ASPath) -> String {
         .join(";")
 }
 
-fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::ParseIntError> {
+pub fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::ParseIntError> {
     fn segment_from_string(
         segment: &str,
     ) -> std::result::Result<Option<Segment>, std::num::ParseIntError> {

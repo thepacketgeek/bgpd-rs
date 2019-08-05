@@ -11,7 +11,7 @@ use log::{debug, info, LevelFilter};
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
-use bgpd::{handle_api_request, serve, ServerConfig};
+use super::{handle_api_request, serve, ServerConfig};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd", rename_all = "kebab-case")]
