@@ -1,4 +1,5 @@
-use bgpd_lib::utils::{as_path_to_string, format_time_as_elapsed};
+use bgp_rs::Segment;
+use bgpd_lib::utils::format_time_as_elapsed;
 use futures::future;
 use hyper::rt::Future;
 use hyper::{Body, Request, Response};
@@ -98,10 +99,24 @@ pub fn handle_api_request(req: Request<Body>) -> BoxFut {
                                 "origin".to_string(),
                                 Value::String(route.next_hop.to_string()),
                             );
-                            data.insert(
-                                "as_path".to_string(),
-                                Value::String(as_path_to_string(&route.as_path)),
-                            );
+                            data.insert("as_path".to_string(), {
+                                let as_path = route
+                                    .as_path
+                                    .segments
+                                    .iter()
+                                    .map(|segment| {
+                                        let asns = match segment {
+                                            Segment::AS_SEQUENCE(asns) => asns,
+                                            Segment::AS_SET(asns) => asns,
+                                        };
+                                        asns.iter()
+                                            .map(|asn| asn.to_string())
+                                            .collect::<Vec<String>>()
+                                            .join(" ")
+                                    })
+                                    .collect::<Vec<String>>();
+                                Value::String(as_path.join("; "))
+                            });
                             data.insert(
                                 "local_pref".to_string(),
                                 match route.local_pref {
