@@ -335,7 +335,7 @@ pub fn process_message(peer: &mut Peer, message: Message) -> Result<Option<Messa
                     })
                     .unwrap_or_else(|| vec![]);
 
-                let community_list = CommunityList::new(
+                let community_list = CommunityList(
                     communities
                         .into_iter()
                         .chain(ext_communities.into_iter())

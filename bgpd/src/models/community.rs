@@ -28,20 +28,12 @@ impl fmt::Display for Community {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CommunityList {
-    pub communities: Vec<Community>,
-}
-
-impl CommunityList {
-    pub fn new(communities: Vec<Community>) -> Self {
-        CommunityList { communities }
-    }
-}
+pub struct CommunityList(pub Vec<Community>);
 
 impl fmt::Display for CommunityList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let communities = self
-            .communities
+            .0
             .iter()
             .map(std::string::ToString::to_string)
             .collect::<Vec<String>>()
@@ -74,7 +66,7 @@ impl Community {
 impl ToSql for CommunityList {
     fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
         let result = self
-            .communities
+            .0
             .iter()
             .map(|community| match community {
                 Community::STANDARD(community) => format!("s{}", community.to_string()),
@@ -92,13 +84,13 @@ impl FromSql for CommunityList {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         value.as_str().and_then(|communities| {
             if communities.is_empty() {
-                return Ok(CommunityList::new(vec![]));
+                return Ok(CommunityList(vec![]));
             }
             let mut parsed: Vec<Community> = Vec::new();
             for community in communities.split(';') {
                 parsed.push(Community::parse_from_sql(community)?);
             }
-            Ok(CommunityList::new(parsed))
+            Ok(CommunityList(parsed))
         })
     }
 }
