@@ -47,7 +47,7 @@ pub fn handle_api_request(req: Request<Body>) -> BoxFut {
                             },
                         );
                         data.insert(
-                            "connect_time".to_string(),
+                            "uptime".to_string(),
                             match peer.connect_time {
                                 Some(value) => Value::String(format_time_as_elapsed(value)),
                                 None => Value::Null,
@@ -84,7 +84,7 @@ pub fn handle_api_request(req: Request<Body>) -> BoxFut {
                                 Value::String(route.received_from.to_string()),
                             );
                             data.insert(
-                                "received_at".to_string(),
+                                "age".to_string(),
                                 Value::String(format_time_as_elapsed(route.received_at)),
                             );
                             data.insert(

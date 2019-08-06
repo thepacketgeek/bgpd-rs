@@ -118,7 +118,6 @@ dependencies = [
 name = "bgpd-cli"
 version = "0.1.0"
 dependencies = [
- "bgp-rs 0.5.0 (git+https://github.com/thepacketgeek/bgp-rs?branch=message-attrs)",
  "prettytable-rs 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "reqwest 0.9.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.92 (registry+https://github.com/rust-lang/crates.io-index)",

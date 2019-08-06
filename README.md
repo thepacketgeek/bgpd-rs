@@ -41,7 +41,38 @@ local_as = 100
 ```
 
 # View BGPd Information
-Use `bgpd-cli` for viewing peer & route information:
+BGPd offers an HTTP API that can be queried to view operational info like neighbors and routes:
+
+```
+$ curl -s http://127.0.0.1:8080/show/routes/learned | jq
+[
+  {
+    "age": "00:00:02",
+    "as_path": "",
+    "communities": "404 65000.10",
+    "local_pref": 100,
+    "multi_exit_disc": 10,
+    "next_hop": "127.0.0.2",
+    "origin": "127.0.0.2",
+    "prefix": "2.10.0.0",
+    "received_from": "2.2.2.2"
+  },
+  {
+    "age": "00:00:02",
+    "as_path": "100 200",
+    "communities": "",
+    "local_pref": 100,
+    "multi_exit_disc": null,
+    "next_hop": "127.0.0.2",
+    "origin": "127.0.0.2",
+    "prefix": "2.200.0.0",
+    "received_from": "2.2.2.2"
+  }
+]
+```
+
+## `bgpd-cli`
+You can use the included for viewing peer & route information. [more info here](cli/README.md)
 
 Current peer session status:
 ```
@@ -65,6 +96,8 @@ Neighbor  AFI   Prefix     Next Hop   Age       Origin  Local Pref  Metric  AS P
  3.3.3.3   IPv4  3.200.0.0  127.0.0.3  00:00:09  IGP     300
 ```
  > Tip: Use the `watch` command for keeping this view up-to-date
+
+
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.

@@ -45,7 +45,7 @@ impl ToRow for &PeerSummaryRow {
             display(peer.get("asn")),
             display(peer.get("msg_received")),
             display(peer.get("msg_sent")),
-            display(peer.get("connect_time")),
+            display(peer.get("uptime")),
             display(peer.get("state")),
             display(peer.get("prefixes_received")),
         ];
@@ -90,7 +90,7 @@ impl ToRow for &RouteRow {
             afi,
             prefix,
             display(route.get("next_hop")),
-            display(route.get("received_at")),
+            display(route.get("age")),
             display(route.get("origin")),
             display(route.get("local_pref")),
             display(route.get("multi_exit_disc")),
