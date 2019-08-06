@@ -2,8 +2,6 @@ use bgp_rs::{ASPath, Segment};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use std::net::IpAddr;
 
-pub const EMPTY_VALUE: &str = "";
-
 pub fn transform_u8_to_bytes(x: u8) -> [u8; 1] {
     let b1: u8 = x as u8;
     [b1]

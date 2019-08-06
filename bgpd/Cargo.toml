@@ -11,10 +11,9 @@ path = "src/main.rs"
 
 [dependencies]
 bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs", branch = "message-attrs" }
-bgpd-lib = { path = "../lib" }
 bytes = "0.4.12"
 byteorder = "1.3.1"
-chrono = "0.4.7"
+chrono = { version = "0.4.7", features = ["serde"] }
 ctrlc = "3.1.3"
 env_logger = "0.6.1"
 futures = "0.1"

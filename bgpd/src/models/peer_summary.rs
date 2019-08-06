@@ -16,7 +16,6 @@ pub struct PeerSummary {
     pub asn: u32,
     pub msg_received: Option<u64>,
     pub msg_sent: Option<u64>,
-    // #[serde(with = "my_date_format")]
     pub connect_time: Option<DateTime<Utc>>,
     pub state: PeerState,
     pub prefixes_received: Option<u64>,

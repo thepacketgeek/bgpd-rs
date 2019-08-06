@@ -3,13 +3,13 @@ use std::net::IpAddr;
 use std::string::ToString;
 
 use bgp_rs::Prefix;
-use bgpd_lib::utils::as_path_to_string;
 use log::{error, trace};
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result, NO_PARAMS};
 
 use super::DBTable;
 use crate::models::{PeerSummary, Route};
+use crate::utils::as_path_to_string;
 
 pub struct DB {
     conn: Connection,

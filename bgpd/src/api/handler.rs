@@ -1,13 +1,13 @@
 use bgp_rs::Segment;
-use bgpd_lib::utils::format_time_as_elapsed;
 use futures::future;
 use hyper::rt::Future;
 use hyper::{Body, Request, Response};
 use hyper::{Method, StatusCode};
-
-use crate::db::DB;
 use log::{error, trace};
 use serde_json::{self, Map, Number, Value};
+
+use crate::db::DB;
+use crate::utils::format_time_as_elapsed;
 
 type BoxFut = Box<dyn Future<Item = Response<Body>, Error = hyper::Error> + Send>;
 

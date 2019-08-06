@@ -4,7 +4,7 @@ use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, 
 use rusqlite::Result;
 use serde::{Deserialize, Serialize};
 
-use bgpd_lib::utils::{asn_to_dotted, ext_community_to_display};
+use crate::utils::{asn_to_dotted, ext_community_to_display};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Community {

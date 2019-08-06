@@ -1,11 +1,12 @@
 use std::convert::From;
 use std::net::IpAddr;
 
-use bgpd_lib::utils::EMPTY_VALUE;
 use prettytable::{cell, row, Row};
 use serde_json::{self, Value};
 
 use crate::table::ToRow;
+
+pub const EMPTY_VALUE: &str = "";
 
 pub fn should_exist(value: Option<&Value>) -> &Value {
     value.expect("Provide a valid JSON key")

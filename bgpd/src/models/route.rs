@@ -2,13 +2,13 @@ use std::convert::TryFrom;
 use std::net::IpAddr;
 
 use bgp_rs::{ASPath, Origin};
-use bgpd_lib::utils::{as_path_from_string, as_path_to_string};
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::Type;
 use rusqlite::{Error as RError, Row};
 use serde::{Deserialize, Serialize};
 
 use super::community::CommunityList;
+use crate::utils::{as_path_from_string, as_path_to_string};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Route {

@@ -5,6 +5,7 @@ mod db;
 mod handler;
 mod models;
 mod session;
+mod utils;
 
 pub use api::handler::handle_api_request;
 pub use config::ServerConfig;
