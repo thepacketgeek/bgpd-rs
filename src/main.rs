@@ -54,16 +54,22 @@ fn main() -> Result<()> {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let addr = (args.http_addr, args.http_port).into();
+    serve(args.address, args.port, config, &mut runtime)?;
 
-    let server = Server::bind(&addr)
+    let http_socket = (args.http_addr, args.http_port).into();
+    let http_server = Server::bind(&http_socket)
         .serve(|| service_fn(handle_api_request))
         .map_err(|e| eprintln!("server error: {}", e));
+    runtime.spawn(http_server);
 
-    runtime.spawn(server);
+    ctrlc::set_handler(move || {
+        info!("Stopping BGPd...");
+        // Remove DB
+        std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting DB");
+        std::process::exit(0);
+    })
+    .expect("Error setting Ctrl-C handler");
 
-    let runtime = serve(args.address, args.port, config, runtime)?;
     runtime.shutdown_on_idle().wait().unwrap();
-
     Ok(())
 }

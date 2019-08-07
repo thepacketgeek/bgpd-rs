@@ -34,9 +34,11 @@ fn update_peer(peer: &Peer) -> Result<(), String> {
         .map_err(|err| format!("{}", err))
 }
 
-/// Receives a TcpStream from either an incoming connection or active polling,
-/// and processes the OPEN message for the correct peer (if configured)
+/// Receives a TcpStream (from either an incoming connection or active polling),
+/// Converting it into a Session which processes the OPEN message for the peer
+///  (if the peer exists in the ServerConfig)
 fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
+    // Receives a peer from the Session ending and adds back to the Peers container
     let peer_insert = {
         let peers = peers.clone();
         move |peer: Option<Peer>| {
@@ -53,7 +55,7 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
         }
     };
 
-    let connection = MessageProtocol::new(stream, MessageCodec::new())
+    let session = MessageProtocol::new(stream, MessageCodec::new())
         .into_future()
         .map_err(|(e, _)| e.into())
         .and_then(move |(open, protocol)| {
@@ -74,9 +76,12 @@ fn handle_new_connection(stream: TcpStream, peers: Arc<Mutex<Peers>>) {
         })
         .map(peer_insert)
         .map_err(|e| error!("{}", e));
-    tokio::spawn(connection);
+    tokio::spawn(session);
 }
 
+/// Given a peer that doesn't have an active session
+/// Will attempt to connect to that peer with the given
+/// source addr and destination port
 fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc<Mutex<Peers>>) {
     if let Ok(mut peers) = peers.lock() {
         if let Some(peer) = peers.get_mut(&peer) {
@@ -134,12 +139,14 @@ fn connect_to_peer(peer: IpAddr, source_addr: IpAddr, dest_port: u16, peers: Arc
     tokio::spawn(connect);
 }
 
+/// Main entry point to run the BGPd service
+/// Schedules the futures for receiving new connections and polling idle peers
 pub fn serve(
     addr: IpAddr,
     port: u16,
     config: ServerConfig,
-    mut runtime: Runtime,
-) -> Result<Runtime, Error> {
+    runtime: &mut Runtime,
+) -> Result<(), Error> {
     let socket = SocketAddr::from((addr, port));
     let listener = TcpListener::bind(&socket)?;
 
@@ -215,14 +222,5 @@ pub fn serve(
         .map_err(|e| error!("Error executing interval: {:?}", e))
     };
     runtime.spawn(connect);
-
-    ctrlc::set_handler(move || {
-        info!("Stopping BGP server...");
-        // Remove DB
-        std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting DB");
-        std::process::exit(0);
-    })
-    .expect("Error setting Ctrl-C handler");
-
-    Ok(runtime)
+    Ok(())
 }

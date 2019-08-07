@@ -1,7 +1,9 @@
 use crate::models::{PeerSummary, Route};
 use rusqlite::{Connection, Result, NO_PARAMS};
 
-use super::DBTable;
+pub trait DBTable {
+    fn create_table(conn: &Connection) -> Result<usize>;
+}
 
 impl DBTable for Route {
     fn create_table(conn: &Connection) -> Result<usize> {
