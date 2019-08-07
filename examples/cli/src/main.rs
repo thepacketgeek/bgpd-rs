@@ -31,7 +31,7 @@ enum Command {
 #[derive(StructOpt, Debug)]
 #[structopt(rename_all = "kebab-case")]
 enum Show {
-    #[structopt(alias="peers")]
+    #[structopt(visible_alias="peers")]
     Neighbors,
     #[structopt()]
     Routes(Routes),
