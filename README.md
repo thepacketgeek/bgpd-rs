@@ -43,11 +43,32 @@ local_as = 100
 # View BGPd Information
 BGPd offers an HTTP API that can be queried to view operational info like neighbors and routes:
 
+Neighbor uptime & prefixes received
+```
+$ curl -s http://127.0.0.1:8080/show/neighbors | jq '.[] | {peer: .neighbor, uptime: .uptime, prefixes: .prefixes_received}'
+{
+  "peer": "127.0.0.2",
+  "uptime": "00:01:53",
+  "pfxs": 3
+}
+{
+  "peer": "127.0.0.3",
+  "uptime": "00:01:43",
+  "pfxs": 2
+}
+{
+  "peer": "::0.0.0.2",
+  "uptime": null,
+  "pfxs": null
+}
+```
+
+Learned routes (with attributes)
 ```
 $ curl -s http://127.0.0.1:8080/show/routes/learned | jq
 [
   {
-    "age": "00:00:02",
+    "age": "00:03:21",
     "as_path": "",
     "communities": "404 65000.10",
     "local_pref": 100,
@@ -55,10 +76,11 @@ $ curl -s http://127.0.0.1:8080/show/routes/learned | jq
     "next_hop": "127.0.0.2",
     "origin": "127.0.0.2",
     "prefix": "2.10.0.0",
+    "received_at": 1565200222,
     "received_from": "2.2.2.2"
   },
   {
-    "age": "00:00:02",
+    "age": "00:03:21",
     "as_path": "100 200",
     "communities": "",
     "local_pref": 100,
@@ -66,7 +88,21 @@ $ curl -s http://127.0.0.1:8080/show/routes/learned | jq
     "next_hop": "127.0.0.2",
     "origin": "127.0.0.2",
     "prefix": "2.200.0.0",
+    "received_at": 1565200222,
     "received_from": "2.2.2.2"
+  },
+  ...
+  {
+    "age": "00:03:11",
+    "as_path": "",
+    "communities": "",
+    "local_pref": 300,
+    "multi_exit_disc": null,
+    "next_hop": "127.0.0.3",
+    "origin": "127.0.0.3",
+    "prefix": "3.200.0.0",
+    "received_at": 1565200232,
+    "received_from": "3.3.3.3"
   }
 ]
 ```

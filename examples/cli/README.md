@@ -15,18 +15,17 @@ Use `bgpd-cli` for viewing peer & route information:
 
 Current peer session status:
 ```
-[~/bgpd-rs/] $ cargo run --bin cli -- show neighbors
+[~/bgpd-rs/examples/cli] $ cargo run -- show neighbors
 Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
  ::0.0.0.2    65000  6        3        00:00:11  Established  0
- 127.0.0.2    65000  0        0        ---       Idle         0
- 172.16.20.1  65000  0        0        ---       Idle         0
- 127.0.0.3    65000  0        0        ---       Idle         0
+ 127.0.0.2    65000                              Idle         
+ 127.0.0.3    65000                              Idle         
 ```
 
 Learned routes:
 ```
-[~/bgpd-rs/] $ cargo build
-[~/bgpd-rs/] $ ./targets/debug/cli show routes learned
+[~/bgpd-rs/examples/cli] $ cargo build
+[~/bgpd-rs/examples/cli] $ ./targets/debug/cli show routes learned
 Neighbor  AFI   Prefix     Next Hop   Age       Origin  Local Pref  Metric  AS Path  Communities
  2.2.2.2   IPv4  2.10.0.0   127.0.0.2  00:00:10  IGP     100         10               404 65000.10
  2.2.2.2   IPv4  2.100.0.0  127.0.0.2  00:00:10  IGP     100         500              target:65000:1.1.1.1 redirect:65000:100
