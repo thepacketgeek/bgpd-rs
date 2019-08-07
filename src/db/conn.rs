@@ -7,8 +7,9 @@ use log::{error, trace};
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Result, NO_PARAMS};
 
-use super::route::as_path_to_string;
-use super::{DBTable, PeerStatus, Route};
+use super::DBTable;
+use crate::models::{PeerSummary, Route};
+use crate::utils::as_path_to_string;
 
 pub struct DB {
     conn: Connection,
@@ -17,7 +18,7 @@ pub struct DB {
 impl DB {
     pub fn new() -> Result<Self> {
         let conn = Connection::open("/tmp/bgpd.sqlite3")?;
-        PeerStatus::create_table(&conn)?;
+        PeerSummary::create_table(&conn)?;
         Route::create_table(&conn)?;
         Ok(Self { conn })
     }
@@ -107,15 +108,20 @@ impl DB {
         Ok(())
     }
 
-    pub fn get_all_peers(&self) -> Result<Vec<PeerStatus>> {
+    pub fn get_all_peers(&self) -> Result<Vec<PeerSummary>> {
         let mut stmt = self.conn.prepare(
             r#"SELECT
-                neighbor, router_id, asn, msg_received,
-                msg_sent, connect_time, state
-            FROM peers ORDER BY neighbor ASC"#,
+                peers.neighbor, peers.router_id, peers.asn, peers.msg_received,
+                peers.msg_sent, peers.connect_time, peers.state, routes.prefixes_received 
+            FROM peers 
+            LEFT OUTER JOIN
+                (SELECT router_id, count(*) AS prefixes_received 
+                FROM routes GROUP BY router_id) routes     
+            ON peers.router_id = routes.router_id 
+            ORDER BY neighbor ASC"#,
         )?;
         let peer_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
-        let mut peers: Vec<PeerStatus> = Vec::new();
+        let mut peers: Vec<PeerSummary> = Vec::new();
         for peer in peer_iter {
             match peer {
                 Ok(peer) => peers.push(peer),
@@ -125,7 +131,7 @@ impl DB {
         Ok(peers)
     }
 
-    pub fn update_peer(&self, status: &PeerStatus) -> Result<()> {
+    pub fn update_peer(&self, status: &PeerSummary) -> Result<()> {
         trace!("Updating peer {}", status.neighbor);
         self.conn.execute(
             r#"INSERT OR REPLACE INTO peers

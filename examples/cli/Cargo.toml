@@ -5,12 +5,12 @@ authors = ["Mat Wood <mat@thepacketgeek.com>"]
 edition = "2018"
 
 [[bin]]
-name = "cli"
+name = "bgpd-cli"
 path = "src/main.rs"
 
 [dependencies]
-bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs", branch = "message-attrs" }
-bgpd-lib = { path = "../lib" }
-chrono = "0.4.7"
+reqwest = "0.9.19"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 structopt = "0.2.18"
 prettytable-rs = "0.8.0"

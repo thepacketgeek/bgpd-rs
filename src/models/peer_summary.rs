@@ -4,13 +4,13 @@ use std::str::FromStr;
 
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Connection, Error as RError, Result, Row, NO_PARAMS};
+use rusqlite::{Error as RError, Row};
+use serde::{Deserialize, Serialize};
 
-use super::DBTable;
-use crate::peer::PeerState;
+use super::PeerState;
 
-#[derive(Debug)]
-pub struct PeerStatus {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PeerSummary {
     pub neighbor: IpAddr,
     pub router_id: Option<IpAddr>,
     pub asn: u32,
@@ -18,11 +18,12 @@ pub struct PeerStatus {
     pub msg_sent: Option<u64>,
     pub connect_time: Option<DateTime<Utc>>,
     pub state: PeerState,
+    pub prefixes_received: Option<u64>,
 }
 
-impl PeerStatus {
+impl PeerSummary {
     pub fn new(addr: IpAddr, asn: u32, state: PeerState) -> Self {
-        PeerStatus {
+        PeerSummary {
             neighbor: addr,
             router_id: None,
             asn,
@@ -30,29 +31,12 @@ impl PeerStatus {
             msg_sent: None,
             connect_time: None,
             state,
+            prefixes_received: None,
         }
     }
 }
 
-impl DBTable for PeerStatus {
-    fn create_table(conn: &Connection) -> Result<usize> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS peers (
-                id INTEGER PRIMARY KEY,
-                neighbor TEXT NOT NULL UNIQUE,
-                router_id TEXT,
-                asn BIGINT NOT NULL,
-                msg_received BIGINT,
-                msg_sent BIGINT,
-                connect_time BIGINT,
-                state TEXT NOT NULL
-            )",
-            NO_PARAMS,
-        )
-    }
-}
-
-impl<'a> TryFrom<&Row<'a>> for PeerStatus {
+impl<'a> TryFrom<&Row<'a>> for PeerSummary {
     type Error = RError;
 
     fn try_from(row: &Row) -> std::result::Result<Self, Self::Error> {
@@ -85,7 +69,11 @@ impl<'a> TryFrom<&Row<'a>> for PeerStatus {
             .get(6)
             .map(|state: String| PeerState::from_str(&state))?
             .map_err(|err| RError::FromSqlConversionFailure(6, Type::Text, Box::new(err)))?;
-        Ok(PeerStatus {
+        let prefixes_received = match state {
+            PeerState::Established => row.get(7).map(maybe_u64)?,
+            _ => None,
+        };
+        Ok(PeerSummary {
             neighbor: addr,
             router_id,
             asn: row.get(2)?,
@@ -93,6 +81,7 @@ impl<'a> TryFrom<&Row<'a>> for PeerStatus {
             msg_sent: row.get(4).map(maybe_u64)?,
             connect_time,
             state,
+            prefixes_received,
         })
     }
 }

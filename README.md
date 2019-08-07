@@ -41,30 +41,74 @@ local_as = 100
 ```
 
 # View BGPd Information
-Use `bgpd-cli` for viewing peer & route information:
+BGPd offers an HTTP API that can be queried to view operational info like neighbors and routes:
 
-Current peer session status:
+Neighbor uptime & prefixes received
 ```
-[~/bgpd-rs/] $ cargo run --bin cli -- show neighbors
-Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
- ::0.0.0.2    65000  6        3        00:00:11  Established  0
- 127.0.0.2    65000  0        0        ---       Idle         0
- 172.16.20.1  65000  0        0        ---       Idle         0
- 127.0.0.3    65000  0        0        ---       Idle         0
+$ curl -s http://127.0.0.1:8080/show/neighbors | jq '.[] | {peer: .neighbor, uptime: .uptime, prefixes: .prefixes_received}'
+{
+  "peer": "127.0.0.2",
+  "uptime": "00:01:53",
+  "pfxs": 3
+}
+{
+  "peer": "127.0.0.3",
+  "uptime": "00:01:43",
+  "pfxs": 2
+}
+{
+  "peer": "::0.0.0.2",
+  "uptime": null,
+  "pfxs": null
+}
 ```
 
-Learned routes:
+Learned routes (with attributes)
 ```
-[~/bgpd-rs/] $ cargo build
-[~/bgpd-rs/] $ ./targets/debug/cli show routes learned
-Neighbor  AFI   Prefix     Next Hop   Age       Origin  Local Pref  Metric  AS Path  Communities
- 2.2.2.2   IPv4  2.10.0.0   127.0.0.2  00:00:10  IGP     100         10               404 65000.10
- 2.2.2.2   IPv4  2.100.0.0  127.0.0.2  00:00:10  IGP     100         500              target:65000:1.1.1.1 redirect:65000:100
- 2.2.2.2   IPv4  2.200.0.0  127.0.0.2  00:00:10  IGP     100                 100 200
- 3.3.3.3   IPv4  3.100.0.0  127.0.0.3  00:00:09  IGP     100                 300
- 3.3.3.3   IPv4  3.200.0.0  127.0.0.3  00:00:09  IGP     300
+$ curl -s http://127.0.0.1:8080/show/routes/learned | jq
+[
+  {
+    "age": "00:03:21",
+    "as_path": "",
+    "communities": "404 65000.10",
+    "local_pref": 100,
+    "multi_exit_disc": 10,
+    "next_hop": "127.0.0.2",
+    "origin": "127.0.0.2",
+    "prefix": "2.10.0.0",
+    "received_at": 1565200222,
+    "received_from": "2.2.2.2"
+  },
+  {
+    "age": "00:03:21",
+    "as_path": "100 200",
+    "communities": "",
+    "local_pref": 100,
+    "multi_exit_disc": null,
+    "next_hop": "127.0.0.2",
+    "origin": "127.0.0.2",
+    "prefix": "2.200.0.0",
+    "received_at": 1565200222,
+    "received_from": "2.2.2.2"
+  },
+  ...
+  {
+    "age": "00:03:11",
+    "as_path": "",
+    "communities": "",
+    "local_pref": 300,
+    "multi_exit_disc": null,
+    "next_hop": "127.0.0.3",
+    "origin": "127.0.0.3",
+    "prefix": "3.200.0.0",
+    "received_at": 1565200232,
+    "received_from": "3.3.3.3"
+  }
+]
 ```
- > Tip: Use the `watch` command for keeping this view up-to-date
+
+Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API
+
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
@@ -103,12 +147,12 @@ And then running `bgpd` as follows:
 
 Using IPv6
 ```
-$ cargo run --bin bgpd --  -a "::1" -p 1179 ./examples/config.toml -vv
+$ cargo run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
 ```
-$ cargo run --bin bgpd -- -p 1179 ./examples/config.toml -vv
+$ cargo run -- -d -p 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:

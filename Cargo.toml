@@ -1,6 +1,32 @@
-[workspace]
-members = [
-  "bgpd",
-  "cli",
-  "lib",
-]
+[package]
+name = "bgpd"
+version = "0.1.0"
+authors = ["Mat Wood <mat@thepacketgeek.com>"]
+edition = "2018"
+
+[[bin]]
+name = "bgpd"
+path = "src/main.rs"
+
+
+[dependencies]
+bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs", branch = "message-attrs" }
+bytes = "0.4.12"
+byteorder = "1.3.1"
+chrono = { version = "0.4.7", features = ["serde"] }
+ctrlc = "3.1.3"
+env_logger = "0.6.1"
+futures = "0.1"
+hyper = "0.12.33"
+log = "0.4.6"
+net2 = "0.2.33"
+prettytable-rs = "0.8.0"
+rusqlite = "0.19.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+structopt = "0.2.18"
+tokio = "0.1.21"
+tokio-io = "0.1"
+tokio-codec = "0.1.1"
+toml = "0.5"
+twoway = "0.2.0"
