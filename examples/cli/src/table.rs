@@ -30,7 +30,7 @@ where
     pub fn with_format(format: format::TableFormat) -> Self {
         let mut table = Table::new();
         table.set_format(format);
-        table.add_row(T::columns());
+        table.set_titles(T::columns());
         Self {
             inner: table,
             row_type: PhantomData,

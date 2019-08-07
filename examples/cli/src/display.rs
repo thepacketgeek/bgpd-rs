@@ -12,7 +12,7 @@ pub fn should_exist(value: Option<&Value>) -> &Value {
     value.expect("Provide a valid JSON key")
 }
 
-pub fn display(value: Option<&Value>) -> String {
+pub fn display_cell(value: Option<&Value>) -> String {
     match should_exist(value) {
         Value::Null => String::from(EMPTY_VALUE),
         Value::Number(inner) => inner.to_string(),
@@ -40,14 +40,14 @@ impl ToRow for &PeerSummaryRow {
     fn to_row(&self) -> Result<Row, String> {
         let peer = &self.0;
         let row = row![
-            display(peer.get("neighbor")),
-            display(peer.get("router_id")),
-            display(peer.get("asn")),
-            display(peer.get("msg_received")),
-            display(peer.get("msg_sent")),
-            display(peer.get("uptime")),
-            display(peer.get("state")),
-            display(peer.get("prefixes_received")),
+            display_cell(peer.get("neighbor")),
+            display_cell(peer.get("router_id")),
+            display_cell(peer.get("asn")),
+            display_cell(peer.get("msg_received")),
+            display_cell(peer.get("msg_sent")),
+            display_cell(peer.get("uptime")),
+            display_cell(peer.get("state")),
+            display_cell(peer.get("prefixes_received")),
         ];
         Ok(row)
     }
@@ -86,18 +86,18 @@ impl ToRow for &RouteRow {
             IpAddr::V6(_) => "IPv6",
         };
         let row = row![
-            display(route.get("received_from")),
+            display_cell(route.get("received_from")),
             afi,
             prefix,
-            display(route.get("next_hop")),
-            display(route.get("age")),
-            display(route.get("origin")),
-            display(route.get("local_pref")),
-            display(route.get("multi_exit_disc")),
+            display_cell(route.get("next_hop")),
+            display_cell(route.get("age")),
+            display_cell(route.get("origin")),
+            display_cell(route.get("local_pref")),
+            display_cell(route.get("multi_exit_disc")),
             // TODO, this just displays the first segment as space delimited ASNs
             // Should it display more?
-            display(route.get("as_path")),
-            display(route.get("communities")),
+            display_cell(route.get("as_path")),
+            display_cell(route.get("communities")),
         ];
         Ok(row)
     }

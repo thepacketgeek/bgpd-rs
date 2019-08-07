@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 use std::io::Result;
 use std::net::IpAddr;
 
@@ -16,18 +14,24 @@ use bgpd::{handle_api_request, serve, ServerConfig};
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd", rename_all = "kebab-case")]
 /// BGPd Server
-struct Args {
-    /// Path to bgpd server config
+pub struct Args {
+    /// Path to BGP service config.toml
     config_path: String,
+    /// Host address to use for BGP service
     #[structopt(short, long, default_value = "127.0.0.1")]
-    /// Path to bgpd server config
     address: IpAddr,
+    /// Host port to use for BGP service
     #[structopt(short, long, default_value = "179")]
-    /// Path to bgpd server config
     port: u16,
+    /// Host address to use for HTTP API
+    #[structopt(long, default_value = "127.0.0.1")]
+    http_addr: IpAddr,
+    /// Host port to use for HTTP API
+    #[structopt(long, default_value = "8080")]
+    http_port: u16,
+    /// Show debug logs (additive for trace logs)
     #[structopt(short, parse(from_occurrences))]
-    /// Path to bgpd server config
-    verbose: u8,
+    pub verbose: u8,
 }
 
 fn main() -> Result<()> {
@@ -50,16 +54,15 @@ fn main() -> Result<()> {
 
     let mut runtime = Runtime::new().unwrap();
 
-    let addr = ([127, 0, 0, 1], 8080).into();
+    let addr = (args.http_addr, args.http_port).into();
 
     let server = Server::bind(&addr)
         .serve(|| service_fn(handle_api_request))
         .map_err(|e| eprintln!("server error: {}", e));
 
     runtime.spawn(server);
-    println!("HERE!");
-    let runtime = serve(args.address, args.port, config, runtime)?;
 
+    let runtime = serve(args.address, args.port, config, runtime)?;
     runtime.shutdown_on_idle().wait().unwrap();
 
     Ok(())

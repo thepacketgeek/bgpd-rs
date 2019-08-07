@@ -71,32 +71,7 @@ $ curl -s http://127.0.0.1:8080/show/routes/learned | jq
 ]
 ```
 
-## `bgpd-cli`
-You can use the included for viewing peer & route information. [more info here](cli/README.md)
-
-Current peer session status:
-```
-[~/bgpd-rs/] $ cargo run --bin cli -- show neighbors
-Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
- ::0.0.0.2    65000  6        3        00:00:11  Established  0
- 127.0.0.2    65000  0        0        ---       Idle         0
- 172.16.20.1  65000  0        0        ---       Idle         0
- 127.0.0.3    65000  0        0        ---       Idle         0
-```
-
-Learned routes:
-```
-[~/bgpd-rs/] $ cargo build
-[~/bgpd-rs/] $ ./targets/debug/cli show routes learned
-Neighbor  AFI   Prefix     Next Hop   Age       Origin  Local Pref  Metric  AS Path  Communities
- 2.2.2.2   IPv4  2.10.0.0   127.0.0.2  00:00:10  IGP     100         10               404 65000.10
- 2.2.2.2   IPv4  2.100.0.0  127.0.0.2  00:00:10  IGP     100         500              target:65000:1.1.1.1 redirect:65000:100
- 2.2.2.2   IPv4  2.200.0.0  127.0.0.2  00:00:10  IGP     100                 100 200
- 3.3.3.3   IPv4  3.100.0.0  127.0.0.3  00:00:09  IGP     100                 300
- 3.3.3.3   IPv4  3.200.0.0  127.0.0.3  00:00:09  IGP     300
-```
- > Tip: Use the `watch` command for keeping this view up-to-date
-
+Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API
 
 
 # Development
@@ -136,12 +111,12 @@ And then running `bgpd` as follows:
 
 Using IPv6
 ```
-$ cargo run --bin bgpd --  -a "::1" -p 1179 ./examples/config.toml -vv
+$ cargo run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
 ```
-$ cargo run --bin bgpd -- -p 1179 ./examples/config.toml -vv
+$ cargo run -- -d -p 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
