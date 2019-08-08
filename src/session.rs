@@ -146,6 +146,20 @@ impl Future for Session {
             }
         }
 
+        // Check for routes that need to be advertised
+        if let Ok(db) = DB::new() {
+            db.get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
+                .and_then(|routes| {
+                    for mut route in routes {
+                        trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
+                        // self.send_message(message: Message);
+                        route.state = RouteState::Advertised(Utc::now());
+                        db.update_route(&route);
+                    }
+                    Ok(())
+                });
+        }
+
         // Check for hold time expiration (send keepalive if not expired)
         while let Ok(Async::Ready(_)) = self.hold_timer.poll() {
             if self.hold_timer.get_hold_time() == Duration::seconds(0) {
