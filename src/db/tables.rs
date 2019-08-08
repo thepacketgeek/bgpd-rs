@@ -11,7 +11,7 @@ impl DBTable for Route {
             "CREATE TABLE IF NOT EXISTS routes (
                 id INTEGER PRIMARY KEY,
                 router_id TEXT NOT NULL,
-                received_at BIGINT NOT NULL,
+                state TEXT NOT NULL,
                 prefix TEXT NOT NULL,
                 next_hop TEXT NOT NULL,
                 origin TEXT NOT NULL,
