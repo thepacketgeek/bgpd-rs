@@ -10,4 +10,4 @@ pub use hold_timer::HoldTimer;
 pub use message_counts::MessageCounts;
 pub use peer::{Peer, PeerIdentifier, PeerState};
 pub use peer_summary::PeerSummary;
-pub use route::Route;
+pub use route::{Route, RouteState};

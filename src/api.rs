@@ -7,6 +7,7 @@ use log::{error, trace};
 use serde_json::{self, Map, Number, Value};
 
 use crate::db::DB;
+use crate::models::RouteState;
 use crate::utils::format_time_as_elapsed;
 
 type BoxFut = Box<dyn Future<Item = Response<Body>, Error = hyper::Error> + Send>;
@@ -80,23 +81,27 @@ pub fn handle_api_request(req: Request<Body>) -> BoxFut {
             }
         },
         (&Method::GET, "/show/routes/learned") => {
-            match DB::new().and_then(|db| db.get_all_routes()) {
+            match DB::new().and_then(|db| db.get_all_received_routes()) {
                 Ok(routes) => {
                     let output: Vec<Value> = routes
                         .iter()
                         .map(|route| {
+                            let received_at = match route.state {
+                                RouteState::Received(timestamp) => timestamp,
+                                _ => unreachable!(),
+                            };
                             let mut data: Map<String, Value> = Map::new();
                             data.insert(
                                 "received_from".to_string(),
-                                Value::String(route.received_from.to_string()),
+                                Value::String(route.peer.to_string()),
                             );
                             data.insert(
                                 "received_at".to_string(),
-                                Value::Number(Number::from(route.received_at.timestamp())),
+                                Value::Number(Number::from(received_at.timestamp())),
                             );
                             data.insert(
                                 "age".to_string(),
-                                Value::String(format_time_as_elapsed(route.received_at)),
+                                Value::String(format_time_as_elapsed(received_at)),
                             );
                             data.insert(
                                 "prefix".to_string(),

@@ -12,6 +12,7 @@ use crate::codec::MessageProtocol;
 use crate::db::DB;
 use crate::models::{
     Community, CommunityList, HoldTimer, MessageCounts, Peer, PeerState, PeerSummary, Route,
+    RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
@@ -294,8 +295,8 @@ pub fn process_message(peer: &mut Peer, message: Message) -> Result<Option<Messa
                     .map(|prefix| {
                         let addr = IpAddr::from(prefix);
                         Route {
-                            received_from: peer.remote_id.router_id.unwrap(),
-                            received_at: Utc::now(),
+                            peer: peer.remote_id.router_id.unwrap(),
+                            state: RouteState::Received(Utc::now()),
                             prefix: addr,
                             next_hop,
                             origin: origin.clone(),
