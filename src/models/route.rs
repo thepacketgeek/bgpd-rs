@@ -1,20 +1,21 @@
 use std::convert::TryFrom;
 use std::net::IpAddr;
 
-use bgp_rs::{ASPath, Origin};
+use bgp_rs::{ASPath, Origin, Prefix};
 use chrono::{DateTime, TimeZone, Utc};
 use rusqlite::types::Type;
 use rusqlite::{Error as RError, Row};
 use serde::{Deserialize, Serialize};
 
 use super::community::CommunityList;
-use crate::utils::{as_path_from_string, as_path_to_string};
+use crate::utils::{as_path_from_string, as_path_to_string, prefix_from_string};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Route {
     pub received_from: IpAddr, // router_id
     pub received_at: DateTime<Utc>,
-    pub prefix: IpAddr,
+    #[serde(with = "serialize_prefix")]
+    pub prefix: Prefix,
     pub next_hop: IpAddr,
     #[serde(with = "serialize_origin")]
     pub origin: Origin,
@@ -23,6 +24,27 @@ pub struct Route {
     pub local_pref: Option<u32>,
     pub multi_exit_disc: Option<u32>,
     pub communities: CommunityList,
+}
+
+mod serialize_prefix {
+    use super::prefix_from_string;
+    use bgp_rs::Prefix;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(prefix: &Prefix, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&prefix.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Prefix, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        prefix_from_string(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 mod serialize_as_path {
@@ -80,7 +102,7 @@ impl<'a> TryFrom<&Row<'a>> for Route {
             .map(|timestamp: i64| Utc.timestamp(timestamp, 0))?;
         let prefix = row
             .get(2)
-            .map(|prefix: String| prefix.parse::<IpAddr>())?
+            .map(|prefix: String| prefix_from_string(&prefix))?
             .map_err(|err| RError::FromSqlConversionFailure(2, Type::Text, Box::new(err)))?;
         let next_hop = row
             .get(3)

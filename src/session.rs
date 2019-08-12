@@ -1,6 +1,5 @@
 use std::fmt;
 use std::io::{Error, ErrorKind};
-use std::net::IpAddr;
 
 use bgp_rs::{Identifier, Message, NLRIEncoding, PathAttribute};
 use chrono::{DateTime, Duration, Utc};
@@ -291,19 +290,16 @@ pub fn process_message(peer: &mut Peer, message: Message) -> Result<Option<Messa
                     })
                     .filter(std::option::Option::is_some)
                     .map(std::option::Option::unwrap)
-                    .map(|prefix| {
-                        let addr = IpAddr::from(prefix);
-                        Route {
-                            received_from: peer.remote_id.router_id.unwrap(),
-                            received_at: Utc::now(),
-                            prefix: addr,
-                            next_hop,
-                            origin: origin.clone(),
-                            as_path: as_path.clone(),
-                            local_pref,
-                            multi_exit_disc,
-                            communities: community_list.clone(),
-                        }
+                    .map(|prefix| Route {
+                        received_from: peer.remote_id.router_id.unwrap(),
+                        received_at: Utc::now(),
+                        prefix: prefix.clone(),
+                        next_hop,
+                        origin: origin.clone(),
+                        as_path: as_path.clone(),
+                        local_pref,
+                        multi_exit_disc,
+                        communities: community_list.clone(),
                     })
                     .collect();
                 DB::new().and_then(|db| db.insert_routes(routes)).ok();

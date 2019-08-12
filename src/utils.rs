@@ -1,6 +1,33 @@
-use bgp_rs::{ASPath, Segment};
+use std::error::Error;
+use std::fmt;
+use std::net::{AddrParseError, IpAddr};
+use std::num::ParseIntError;
+
+use bgp_rs::{ASPath, Prefix, Segment, AFI};
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use std::net::IpAddr;
+
+#[derive(Debug)]
+pub struct ParseError {
+    reason: String,
+}
+
+impl ParseError {
+    pub fn new(reason: String) -> Self {
+        ParseError { reason }
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ParseError: {}", self.reason)
+    }
+}
+
+impl Error for ParseError {
+    fn description(&self) -> &str {
+        "Error parsing to/from IP/BGP messages"
+    }
+}
 
 pub fn transform_u8_to_bytes(x: u8) -> [u8; 1] {
     let b1: u8 = x as u8;
@@ -68,10 +95,8 @@ pub fn as_path_to_string(as_path: &ASPath) -> String {
         .join(";")
 }
 
-pub fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::num::ParseIntError> {
-    fn segment_from_string(
-        segment: &str,
-    ) -> std::result::Result<Option<Segment>, std::num::ParseIntError> {
+pub fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, ParseError> {
+    fn segment_from_string(segment: &str) -> std::result::Result<Option<Segment>, ParseError> {
         if let Some(i) = segment.find(':') {
             let (segment_type, paths) = segment.split_at(i + 1);
             let paths = paths
@@ -100,6 +125,32 @@ pub fn as_path_from_string(as_path: &str) -> std::result::Result<ASPath, std::nu
         }
     }
     Ok(ASPath { segments })
+}
+
+pub fn prefix_from_string(prefix: &str) -> std::result::Result<Prefix, ParseError> {
+    if let Some(i) = prefix.find('/') {
+        let (addr, mask) = prefix.split_at(i);
+        let mask = &mask[1..]; // Skip remaining '/'
+        let addr: IpAddr = addr
+            .parse()
+            .map_err(|err: AddrParseError| ParseError::new(format!("{} '{}'", err, prefix)))?;
+        let length: u8 = mask
+            .parse()
+            .map_err(|err: ParseIntError| ParseError::new(format!("{} '{}'", err, prefix)))?;
+        let (protocol, octets) = match addr {
+            IpAddr::V4(v4) => (AFI::IPV4, v4.octets().to_vec()),
+            IpAddr::V6(v6) => (AFI::IPV6, v6.octets().to_vec()),
+        };
+        Ok(Prefix {
+            protocol,
+            length,
+            prefix: octets,
+        })
+    } else {
+        Err(ParseError {
+            reason: format!("Not a valid prefix: '{}'", prefix),
+        })
+    }
 }
 
 pub fn ext_community_to_display(value: u64) -> String {
@@ -206,6 +257,20 @@ mod tests {
     fn test_asn_to_dotted() {
         assert_eq!(asn_to_dotted(100), "100".to_string());
         assert_eq!(asn_to_dotted(4259840100), "65000.100".to_string());
+    }
+
+    #[test]
+    fn test_prefix_from_string() {
+        let prefix = prefix_from_string("1.1.1.0/24").unwrap();
+        assert_eq!(prefix.length, 24);
+        assert_eq!(prefix.prefix, [1, 1, 1, 0]);
+
+        let prefix = prefix_from_string("2001:10::2/64").unwrap();
+        assert_eq!(prefix.length, 64);
+        assert_eq!(
+            prefix.prefix,
+            [32, 1, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]
+        );
     }
 
     #[test]
