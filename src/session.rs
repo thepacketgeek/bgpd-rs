@@ -150,11 +150,16 @@ impl Future for Session {
         if let Ok(db) = DB::new() {
             db.get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
                 .and_then(|routes| {
+                    // TODO: Group routes into common attributes and send in groups
                     for mut route in routes {
                         trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
-                        // self.send_message(message: Message);
-                        route.state = RouteState::Advertised(Utc::now());
-                        db.update_route(&route);
+                        self.send_message(Message::Update(self.peer.create_update(&route)))
+                            .and_then(|_| {
+                                route.state = RouteState::Advertised(Utc::now());
+                                db.update_route(&route)
+                                    .map_err(|err| warn!("Error updating route: {}", err));
+                                Ok(())
+                            });
                     }
                     Ok(())
                 });

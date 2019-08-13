@@ -5,11 +5,12 @@ use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
-use bgp_rs::{Open, OpenParameter};
+use bgp_rs::{NLRIEncoding, Open, OpenParameter, PathAttribute, Update};
 use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
+use crate::models::Route;
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
@@ -182,6 +183,30 @@ impl Peer {
                     value: vec![0x41, 0x04, 0x00, 0x02, 0xfd, 0xe8],
                 },
             ],
+        }
+    }
+
+    pub fn create_update(&self, route: &Route) -> Update {
+        let mut attributes: Vec<PathAttribute> = Vec::with_capacity(4);
+        attributes.push(PathAttribute::ORIGIN(route.origin.clone()));
+        attributes.push(PathAttribute::NEXT_HOP(route.next_hop));
+        if let Some(med) = route.multi_exit_disc {
+            attributes.push(PathAttribute::MULTI_EXIT_DISC(med));
+        }
+        if let Some(pref) = route.local_pref {
+            attributes.push(PathAttribute::LOCAL_PREF(pref));
+        }
+
+        // TODO:
+        // ASPath (adding this peer's ASN if eBGP)
+        // COMMMUNITIES
+
+        let announced_routes = vec![NLRIEncoding::IP(route.prefix.clone())];
+
+        Update {
+            withdrawn_routes: Vec::new(),
+            attributes,
+            announced_routes,
         }
     }
 }

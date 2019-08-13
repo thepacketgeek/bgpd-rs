@@ -131,11 +131,12 @@ impl DB {
 
     pub fn update_route(&self, route: &Route) -> Result<()> {
         trace!("Updating route from {} for {}", route.peer, route.prefix);
-        println!("{:?}", route);
+        dbg!(&route);
         let as_path = as_path_to_string(&route.as_path);
         self.conn.execute(
             r#"UPDATE routes SET
-                state = ?1, next_hop = ?2, origin = ?3, as_path = ?4, local_pref = ?5, metric = ?6, communities=?7)
+                state = ?1, next_hop = ?2, origin = ?3, as_path = ?4, local_pref = ?5,
+                metric = ?6, communities=?7
             WHERE router_id = ?8 AND prefix = ?9"#,
             params![
                 &route.state as &ToSql,
