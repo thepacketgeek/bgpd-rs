@@ -235,7 +235,6 @@ fn encode_update(update: Update) -> Vec<u8> {
         .map(|r| encode_nlri(&r))
         .flatten()
         .collect();
-    bytes.extend_from_slice(&transform_u16_to_bytes(nlri.len() as u16)); // Length
     bytes.extend_from_slice(&nlri);
 
     prepend_preamble_and_length(bytes)
@@ -269,6 +268,7 @@ pub fn capabilities_from_params(parameters: &[OpenParameter]) -> (Capabilities, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bgp_rs::{Prefix, AFI};
 
     #[test]
     fn test_find_msg_range() {
@@ -302,6 +302,28 @@ mod tests {
         };
         let data = encode_open_parameter(&param);
         assert_eq!(data, vec![2, 6, 65, 4, 0, 2, 253, 232]);
+    }
+
+    #[test]
+    fn test_encode_nlri() {
+        let nlri = NLRIEncoding::IP(Prefix {
+            protocol: AFI::IPV6,
+            length: 17,
+            prefix: vec![0x0a, 0x0a, 0x80, 0x00],
+        });
+        let data = encode_nlri(&nlri);
+        assert_eq!(data, vec![17, 10, 10, 128]);
+
+        let nlri = NLRIEncoding::IP(Prefix {
+            protocol: AFI::IPV6,
+            length: 64,
+            prefix: vec![
+                0x20, 0x01, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
+            ],
+        });
+        let data = encode_nlri(&nlri);
+        assert_eq!(data, vec![64, 32, 1, 0, 16, 0, 0, 0, 0]);
     }
 
     #[test]

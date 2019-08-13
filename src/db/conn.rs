@@ -131,7 +131,6 @@ impl DB {
 
     pub fn update_route(&self, route: &Route) -> Result<()> {
         trace!("Updating route from {} for {}", route.peer, route.prefix);
-        dbg!(&route);
         let as_path = as_path_to_string(&route.as_path);
         self.conn.execute(
             r#"UPDATE routes SET

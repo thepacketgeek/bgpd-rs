@@ -147,6 +147,8 @@ impl Future for Session {
         }
 
         // Check for routes that need to be advertised
+        // TODO: How to have newly added routes trigger this future to run & advertise
+        //       versus current behavior of waiting for a packet or hold_time
         if let Ok(db) = DB::new() {
             db.get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
                 .and_then(|routes| {
