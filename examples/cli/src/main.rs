@@ -1,3 +1,4 @@
+use colored::*;
 use reqwest::Url;
 use serde_json::{self, Value};
 use structopt::StructOpt;
@@ -5,7 +6,7 @@ use structopt::StructOpt;
 mod display;
 mod table;
 
-use display::{PeerSummaryRow, RouteRow};
+use display::{AdvertisedRouteRow, LearnedRouteRow, PeerSummaryRow};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd-cli", rename_all = "kebab-case")]
@@ -31,7 +32,7 @@ enum Command {
 #[derive(StructOpt, Debug)]
 #[structopt(rename_all = "kebab-case")]
 enum Show {
-    #[structopt(visible_alias="peers")]
+    #[structopt(visible_alias = "peers")]
     Neighbors,
     #[structopt()]
     Routes(Routes),
@@ -42,6 +43,8 @@ enum Show {
 enum Routes {
     #[structopt()]
     Learned,
+    #[structopt()]
+    Advertised,
 }
 
 fn fetch_url(uri: Url) -> Result<String, String> {
@@ -80,7 +83,25 @@ fn run(args: Args) -> Result<(), String> {
                     let routes: Value = serde_json::from_str(&body[..]).unwrap();
                     let routes = match routes {
                         Value::Array(routes) => {
-                            let routes: Vec<RouteRow> = routes.into_iter().map(RouteRow).collect();
+                            let routes: Vec<LearnedRouteRow> =
+                                routes.into_iter().map(LearnedRouteRow).collect();
+                            routes
+                        }
+                        _ => unreachable!(),
+                    };
+                    let mut table = table::OutputTable::new();
+                    for route in routes.iter() {
+                        table.add_row(&route).map_err(|err| err.to_string())?;
+                    }
+                    table.print();
+                }
+                Routes::Advertised => {
+                    let body = fetch_url(base_url.join("show/routes/advertised").unwrap())?;
+                    let routes: Value = serde_json::from_str(&body[..]).unwrap();
+                    let routes = match routes {
+                        Value::Array(routes) => {
+                            let routes: Vec<AdvertisedRouteRow> =
+                                routes.into_iter().map(AdvertisedRouteRow).collect();
                             routes
                         }
                         _ => unreachable!(),
@@ -100,6 +121,6 @@ fn run(args: Args) -> Result<(), String> {
 fn main() {
     let args = Args::from_args();
     if let Err(err) = run(args) {
-        eprintln!("{}", err.to_string());
+        eprintln!("{}", err.to_string().red());
     }
 }

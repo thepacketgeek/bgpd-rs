@@ -150,21 +150,35 @@ impl Future for Session {
         // TODO: How to have newly added routes trigger this future to run & advertise
         //       versus current behavior of waiting for a packet or hold_time
         if let Ok(db) = DB::new() {
-            db.get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
-                .and_then(|routes| {
+            let res = db
+                .get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
+                .map(|routes| {
                     // TODO: Group routes into common attributes and send in groups
                     for mut route in routes {
                         trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
-                        self.send_message(Message::Update(self.peer.create_update(&route)))
+                        let res = self
+                            .send_message(Message::Update(self.peer.create_update(&route)))
                             .and_then(|_| {
                                 route.state = RouteState::Advertised(Utc::now());
                                 db.update_route(&route)
-                                    .map_err(|err| warn!("Error updating route: {}", err));
-                                Ok(())
+                                    .map_err(|err| Error::new(ErrorKind::BrokenPipe, err))
                             });
+                        if let Err(err) = res {
+                            warn!(
+                                "Error advertising route to {}: {}",
+                                self.peer.remote_id.router_id.unwrap(),
+                                err
+                            );
+                        }
                     }
-                    Ok(())
                 });
+            if let Err(err) = res {
+                warn!(
+                    "Error getting pending routes for {}: {}",
+                    self.peer.remote_id.router_id.unwrap(),
+                    err
+                );
+            }
         }
 
         // Check for hold time expiration (send keepalive if not expired)
