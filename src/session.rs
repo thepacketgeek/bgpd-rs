@@ -155,6 +155,8 @@ impl Future for Session {
                 .map(|routes| {
                     // TODO: Group routes into common attributes and send in groups
                     for mut route in routes {
+                        // TODO: Modify route for next hop, Origin, Etc...
+
                         trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
                         let res = self
                             .send_message(Message::Update(self.peer.create_update(&route)))
