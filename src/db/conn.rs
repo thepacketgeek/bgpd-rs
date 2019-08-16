@@ -43,6 +43,26 @@ impl DB {
         Ok(routes)
     }
 
+    pub fn get_received_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT
+                router_id, state, prefix, next_hop,
+                origin, as_path, local_pref, metric, communities
+            FROM routes
+            WHERE state LIKE "r%" AND router_id = ?1
+            ORDER BY router_id ASC, prefix ASC"#,
+        )?;
+        let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
+        let mut routes: Vec<Route> = Vec::new();
+        for route in route_iter {
+            match route {
+                Ok(route) => routes.push(route),
+                Err(err) => error!("Error parsing route in RouteDB: {}", err),
+            }
+        }
+        Ok(routes)
+    }
+
     pub fn get_all_advertised_routes(&self) -> Result<Vec<Route>> {
         let mut stmt = self.conn.prepare(
             r#"SELECT
@@ -63,14 +83,14 @@ impl DB {
         Ok(routes)
     }
 
-    pub fn get_pending_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
-        trace!("Getting pending routes for peer {}", router_id);
+    pub fn get_advertised_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
+        trace!("Getting advertised routes for peer {}", router_id);
         let mut stmt = self.conn.prepare(
             r#"SELECT
                 router_id, state, prefix, next_hop,
                 origin, as_path, local_pref, metric, communities
             FROM routes
-            WHERE state LIKE "p%" AND router_id = ?1"#,
+            WHERE state LIKE "a%" AND router_id = ?1"#,
         )?;
         let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
         let mut routes: Vec<Route> = Vec::new();
@@ -83,14 +103,14 @@ impl DB {
         Ok(routes)
     }
 
-    pub fn get_advertised_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
-        trace!("Getting advertised routes for peer {}", router_id);
+    pub fn get_pending_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
+        trace!("Getting pending routes for peer {}", router_id);
         let mut stmt = self.conn.prepare(
             r#"SELECT
                 router_id, state, prefix, next_hop,
                 origin, as_path, local_pref, metric, communities
             FROM routes
-            WHERE state LIKE "a%" AND router_id = ?1"#,
+            WHERE state LIKE "p%" AND router_id = ?1"#,
         )?;
         let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
         let mut routes: Vec<Route> = Vec::new();

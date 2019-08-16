@@ -11,15 +11,15 @@ use super::Responder;
 pub fn api_router_service() -> Result<RouterService, std::io::Error> {
     let router = RouterBuilder::new()
         .add(
-            Route::get("/show/neighbors")
+            Route::get("/show/neighbors.*")
                 .using(|req| get_response_for(PeerSummaries::respond(req))),
         )
         .add(
-            Route::get("/show/routes/learned")
+            Route::get("/show/routes/learned.*")
                 .using(|req| get_response_for(LearnedRoutes::respond(req))),
         )
         .add(
-            Route::get("/show/routes/advertised")
+            Route::get("/show/routes/advertised.*")
                 .using(|req| get_response_for(AdvertisedRoutes::respond(req))),
         )
         .build();

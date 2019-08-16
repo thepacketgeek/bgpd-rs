@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use colored::*;
 use reqwest::Url;
 use serde_json::{self, Value};
@@ -42,9 +44,16 @@ enum Show {
 #[structopt(rename_all = "kebab-case")]
 enum Routes {
     #[structopt()]
-    Learned,
+    Learned(RouteOptions),
     #[structopt()]
-    Advertised,
+    Advertised(RouteOptions),
+}
+
+#[derive(StructOpt, Debug)]
+#[structopt(rename_all = "kebab-case")]
+struct RouteOptions {
+    #[structopt()]
+    router_id: Option<IpAddr>,
 }
 
 fn fetch_url(uri: Url) -> Result<String, String> {
@@ -61,8 +70,9 @@ fn run(args: Args) -> Result<(), String> {
     match args.cmd {
         Command::Show(show) => match show {
             Show::Neighbors => {
-                let body = fetch_url(base_url.join("show/neighbors").unwrap())?;
-                let peers: Value = serde_json::from_str(&body[..]).unwrap();
+                let body = fetch_url(base_url.join("show/neighbors/").unwrap())?;
+                let peers: Value = serde_json::from_str(&body[..])
+                    .map_err(|_err| format!("Error parsing response: '{}'", &body))?;
                 let peers = match peers {
                     Value::Array(peers) => {
                         let peers: Vec<PeerSummaryRow> =
@@ -78,9 +88,14 @@ fn run(args: Args) -> Result<(), String> {
                 table.print();
             }
             Show::Routes(routes) => match routes {
-                Routes::Learned => {
-                    let body = fetch_url(base_url.join("show/routes/learned").unwrap())?;
-                    let routes: Value = serde_json::from_str(&body[..]).unwrap();
+                Routes::Learned(options) => {
+                    let mut url = base_url.join("show/routes/learned/").unwrap();
+                    if let Some(router_id) = options.router_id {
+                        url = url.join(&router_id.to_string()).unwrap();
+                    }
+                    let body = fetch_url(url)?;
+                    let routes: Value = serde_json::from_str(&body[..])
+                        .map_err(|_err| format!("Error parsing response: '{}'", &body))?;
                     let routes = match routes {
                         Value::Array(routes) => {
                             let routes: Vec<LearnedRouteRow> =
@@ -95,9 +110,14 @@ fn run(args: Args) -> Result<(), String> {
                     }
                     table.print();
                 }
-                Routes::Advertised => {
-                    let body = fetch_url(base_url.join("show/routes/advertised").unwrap())?;
-                    let routes: Value = serde_json::from_str(&body[..]).unwrap();
+                Routes::Advertised(options) => {
+                    let mut url = base_url.join("show/routes/advertised/").unwrap();
+                    if let Some(router_id) = options.router_id {
+                        url = url.join(&router_id.to_string()).unwrap();
+                    }
+                    let body = fetch_url(url)?;
+                    let routes: Value = serde_json::from_str(&body[..])
+                        .map_err(|_err| format!("Error parsing response: '{}'", &body))?;
                     let routes = match routes {
                         Value::Array(routes) => {
                             let routes: Vec<AdvertisedRouteRow> =

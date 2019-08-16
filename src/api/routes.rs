@@ -48,13 +48,25 @@ pub struct AdvertisedRoutes(Vec<AdvertisedRoute>);
 impl Responder for LearnedRoutes {
     type Item = LearnedRoutes;
 
-    fn respond(_req: Request<Body>) -> Result<Self::Item, StatusCode> {
-        let routes = DB::new()
-            .and_then(|db| db.get_all_received_routes())
-            .map_err(|err| {
-                error!("Error fetching all peers: {}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    fn respond(req: Request<Body>) -> Result<Self::Item, StatusCode> {
+        let parts: Vec<&str> = req
+            .uri()
+            .path()
+            .split('/')
+            .filter(|p| !p.is_empty())
+            .collect();
+
+        let mut query;
+        if let Some(Ok(peer)) = parts.get(3).map(|p| p.parse::<IpAddr>()) {
+            query = DB::new().and_then(|db| db.get_received_routes_for_peer(peer));
+        } else {
+            query = DB::new().and_then(|db| db.get_all_received_routes());
+        }
+
+        let routes = query.map_err(|err| {
+            error!("Error fetching routes: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
         let output: Vec<LearnedRoute> = routes
             .iter()
@@ -103,13 +115,25 @@ impl Responder for LearnedRoutes {
 impl Responder for AdvertisedRoutes {
     type Item = AdvertisedRoutes;
 
-    fn respond(_req: Request<Body>) -> Result<Self::Item, StatusCode> {
-        let routes = DB::new()
-            .and_then(|db| db.get_all_advertised_routes())
-            .map_err(|err| {
-                error!("Error fetching all peers: {}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    fn respond(req: Request<Body>) -> Result<Self::Item, StatusCode> {
+        let parts: Vec<&str> = req
+            .uri()
+            .path()
+            .split('/')
+            .filter(|p| !p.is_empty())
+            .collect();
+
+        let mut query;
+        if let Some(Ok(peer)) = parts.get(3).map(|p| p.parse::<IpAddr>()) {
+            query = DB::new().and_then(|db| db.get_advertised_routes_for_peer(peer));
+        } else {
+            query = DB::new().and_then(|db| db.get_all_advertised_routes());
+        }
+
+        let routes = query.map_err(|err| {
+            error!("Error fetching routes: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
         let output: Vec<AdvertisedRoute> = routes
             .iter()
