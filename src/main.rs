@@ -3,13 +3,12 @@ use std::net::IpAddr;
 
 use env_logger::Builder;
 use futures::future::Future;
-use hyper::service::service_fn;
 use hyper::Server;
 use log::{debug, info, LevelFilter};
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
-use bgpd::{handle_api_request, serve, ServerConfig};
+use bgpd::{api_router_service, serve, ServerConfig};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd", rename_all = "kebab-case")]
@@ -58,7 +57,7 @@ fn main() -> Result<()> {
 
     let http_socket = (args.http_addr, args.http_port).into();
     let http_server = Server::bind(&http_socket)
-        .serve(|| service_fn(handle_api_request))
+        .serve(api_router_service)
         .map_err(|e| eprintln!("server error: {}", e));
     runtime.spawn(http_server);
 

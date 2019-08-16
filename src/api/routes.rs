@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 
 use bgp_rs::Segment;
-use hyper::StatusCode;
+use hyper::{Body, Request, StatusCode};
 use log::error;
 use serde::Serialize;
 
@@ -48,7 +48,7 @@ pub struct AdvertisedRoutes(Vec<AdvertisedRoute>);
 impl Responder for LearnedRoutes {
     type Item = LearnedRoutes;
 
-    fn respond() -> Result<Self::Item, StatusCode> {
+    fn respond(_req: Request<Body>) -> Result<Self::Item, StatusCode> {
         let routes = DB::new()
             .and_then(|db| db.get_all_received_routes())
             .map_err(|err| {
@@ -88,7 +88,11 @@ impl Responder for LearnedRoutes {
                         .join("; "),
                     local_pref: route.local_pref,
                     multi_exit_disc: route.multi_exit_disc,
-                    communities: route.communities.iter().map(|c| c.to_string()).collect(),
+                    communities: route
+                        .communities
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
                 }
             })
             .collect();
@@ -99,7 +103,7 @@ impl Responder for LearnedRoutes {
 impl Responder for AdvertisedRoutes {
     type Item = AdvertisedRoutes;
 
-    fn respond() -> Result<Self::Item, StatusCode> {
+    fn respond(_req: Request<Body>) -> Result<Self::Item, StatusCode> {
         let routes = DB::new()
             .and_then(|db| db.get_all_advertised_routes())
             .map_err(|err| {
@@ -139,7 +143,11 @@ impl Responder for AdvertisedRoutes {
                         .join("; "),
                     local_pref: route.local_pref,
                     multi_exit_disc: route.multi_exit_disc,
-                    communities: route.communities.iter().map(|c| c.to_string()).collect(),
+                    communities: route
+                        .communities
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect(),
                 }
             })
             .collect();

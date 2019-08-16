@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use hyper::StatusCode;
+use hyper::{Body, Request, StatusCode};
 use log::error;
 use serde::Serialize;
 
@@ -28,7 +28,7 @@ pub struct PeerSummaries(Vec<PeerSummary>);
 impl Responder for PeerSummaries {
     type Item = PeerSummaries;
 
-    fn respond() -> Result<Self::Item, StatusCode> {
+    fn respond(_req: Request<Body>) -> Result<Self::Item, StatusCode> {
         let peers = DB::new().and_then(|db| db.get_all_peers()).map_err(|err| {
             error!("Error fetching all peers: {}", err);
             StatusCode::INTERNAL_SERVER_ERROR
