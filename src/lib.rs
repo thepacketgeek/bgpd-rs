@@ -7,6 +7,6 @@ mod models;
 mod session;
 mod utils;
 
-pub use api::api_router_service;
+pub use api::API;
 pub use config::ServerConfig;
 pub use handler::serve;
