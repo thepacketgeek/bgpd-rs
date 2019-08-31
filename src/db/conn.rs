@@ -135,14 +135,14 @@ impl DB {
                 "#,
                 params![
                     &route.peer.to_string(),
-                    &route.state as &ToSql,
+                    &route.state as &dyn ToSql,
                     &route.prefix.to_string(),
                     &route.next_hop.to_string(),
                     &String::from(&route.origin),
                     &as_path,
-                    &route.local_pref as &ToSql,
-                    &route.multi_exit_disc as &ToSql,
-                    &route.communities as &ToSql,
+                    &route.local_pref as &dyn ToSql,
+                    &route.multi_exit_disc as &dyn ToSql,
+                    &route.communities as &dyn ToSql,
                 ],
             )?;
         }
@@ -158,13 +158,13 @@ impl DB {
                 metric = ?6, communities=?7
             WHERE router_id = ?8 AND prefix = ?9"#,
             params![
-                &route.state as &ToSql,
+                &route.state as &dyn ToSql,
                 &route.next_hop.to_string(),
                 &String::from(&route.origin),
                 &as_path,
-                &route.local_pref as &ToSql,
-                &route.multi_exit_disc as &ToSql,
-                &route.communities as &ToSql,
+                &route.local_pref as &dyn ToSql,
+                &route.multi_exit_disc as &dyn ToSql,
+                &route.communities as &dyn ToSql,
                 &route.peer.to_string(),
                 &route.prefix.to_string(),
             ],
