@@ -16,8 +16,9 @@ Totally just a POC, mostly for my own amusement
 - [x] Process UPDATE messages, parsing with capabilities
 - [x] Store received routes locally
 - [x] CLI interface for viewing peer status, routes, etc.
-- [ ] Advertise routes (specified somewhere?)
-- [ ] API/CLI interface for interacting with BGPd (advertising, refreshing peers, etc.)
+- [x] Advertise routes to peers (specified from API)
+- [x] API/CLI interface for interacting with BGPd
+- [ ] Route Policy for advertisement of learned routes
 
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
@@ -109,6 +110,26 @@ $ curl -s http://127.0.0.1:8080/show/routes/learned | jq
 
 Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API
 
+# Advertising Routes
+Adding routes to be advertised to certain peers can be done via the HTTP API:
+
+```
+curl http://127.0.0.1:8080/advertise/prefix/ -d '{"router_id": "2.2.2.2", "prefix": "9.9.9.0/24", "next_hop": "127.0.0.1"}' -H "Content-Type: application/json"
+```
+
+Will get advertised to the peer `2.2.2.2`:
+```
+$ bgpd-cli show routes advertised
+ Neighbor  AFI   Prefix      Next Hop   Age       Origin      Local Pref  Metric  AS Path  Communities
+-------------------------------------------------------------------------------------------------------
+ 2.2.2.2   IPv4  9.9.9.0/24  127.0.0.1  00:00:24  Incomplete
+```
+
+And showing up in the ExaBGP process
+```
+$ exabgpcli show adj-rib in
+neighbor 127.0.0.1 ipv4 unicast 9.9.9.0/24 next-hop 127.0.0.1
+```
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
