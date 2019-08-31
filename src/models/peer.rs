@@ -5,12 +5,15 @@ use std::io::{Error, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
-use bgp_rs::{NLRIEncoding, Open, OpenParameter, PathAttribute, Update};
-use log::debug;
+use bgp_rs::{
+    Capabilities, Identifier, Message, NLRIEncoding, Open, OpenParameter, PathAttribute, Update,
+};
+use chrono::Utc;
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::codec::{capabilities_from_params, MessageProtocol};
-use crate::models::Route;
+use crate::models::{Community, CommunityList, Route, RouteState};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
@@ -78,13 +81,21 @@ impl fmt::Display for PeerIdentifier {
 }
 
 #[derive(Debug)]
+pub enum MessageResponse {
+    Open((Open, Capabilities, u16)),
+    Message(Message),
+    LearnedRoutes(Vec<Route>),
+    Empty,
+}
+
+#[derive(Debug)]
 pub struct Peer {
     pub addr: IpAddr,
     pub remote_id: PeerIdentifier,
     local_id: PeerIdentifier, // Server (local side) ID
     state: PeerState,
     passive: bool,
-    hold_timer: u16,
+    pub hold_timer: u16,
 }
 
 impl Peer {
@@ -129,12 +140,12 @@ impl Peer {
         self.state = new_state;
     }
 
-    pub fn open_received(
-        &mut self,
-        open: Open,
-        mut protocol: MessageProtocol,
-    ) -> (MessageProtocol, u16) {
-        let peer_addr = protocol.get_ref().peer_addr().unwrap();
+    pub fn revert_to_idle(&mut self) {
+        self.update_state(PeerState::Idle);
+        self.remote_id.router_id = None;
+    }
+
+    pub fn open_received(&mut self, open: Open) -> (Capabilities, u16) {
         let (capabilities, remote_asn) = capabilities_from_params(&open.parameters);
         let remote_id = PeerIdentifier::new(
             Some(IpAddr::from(transform_u32_to_bytes(open.identifier))),
@@ -144,13 +155,12 @@ impl Peer {
         debug!(
             "[{}] Received OPEN {} [w/ {} params]",
             remote_id,
-            peer_addr.ip(),
+            self.addr,
             open.parameters.len()
         );
         self.remote_id = remote_id;
-        protocol.codec_mut().set_capabilities(capabilities);
         self.update_state(PeerState::OpenConfirm);
-        (protocol, hold_timer)
+        (capabilities, hold_timer)
     }
 
     pub fn create_open(&self) -> Open {
@@ -209,6 +219,39 @@ impl Peer {
             announced_routes,
         }
     }
+
+    pub fn process_message(&mut self, message: Message) -> Result<MessageResponse, Error> {
+        let response = match message {
+            Message::Open(open) => {
+                let (capabilities, hold_timer) = self.open_received(open);
+                MessageResponse::Open((self.create_open(), capabilities, hold_timer))
+            }
+            Message::KeepAlive => MessageResponse::Message(Message::KeepAlive),
+            Message::Update(update) => {
+                let router_id = self.remote_id.router_id.unwrap();
+                if update.is_announcement() {
+                    let announced_routes =
+                        process_routes(router_id, &update, &update.announced_routes);
+                    MessageResponse::LearnedRoutes(announced_routes)
+                } else {
+                    MessageResponse::Empty
+                }
+                // if update.is_withdrawal() {
+                //     let withdrawn_routes = process_routes(router_id, update, update.withdrawn_routes);
+                // }
+            }
+            Message::Notification(notification) => {
+                warn!("{} NOTIFICATION: {}", self.remote_id, notification);
+                MessageResponse::Empty
+            }
+            Message::RouteRefresh(_) => MessageResponse::Empty,
+            _ => {
+                warn!("{} Unexpected message {:?}", self.remote_id, message);
+                return Err(Error::from(ErrorKind::InvalidInput));
+            }
+        };
+        Ok(response)
+    }
 }
 
 impl Default for Peer {
@@ -235,4 +278,112 @@ impl fmt::Display for Peer {
             self.state.to_string(),
         )
     }
+}
+
+fn process_routes(router_id: IpAddr, update: &Update, routes: &Vec<NLRIEncoding>) -> Vec<Route> {
+    let origin = update
+        .get(Identifier::ORIGIN)
+        .map(|attr| {
+            if let PathAttribute::ORIGIN(origin) = attr {
+                origin.clone()
+            } else {
+                unreachable!()
+            }
+        })
+        .expect("ORIGIN must be present in Update");
+    let next_hop = update
+        .get(Identifier::NEXT_HOP)
+        .map(|attr| {
+            if let PathAttribute::NEXT_HOP(next_hop) = attr {
+                *next_hop
+            } else {
+                unreachable!()
+            }
+        })
+        .expect("NEXT_HOP must be present in Update");
+    let as_path = update
+        .get(Identifier::AS_PATH)
+        .map(|attr| {
+            if let PathAttribute::AS_PATH(as_path) = attr {
+                as_path.clone()
+            } else {
+                unreachable!()
+            }
+        })
+        .expect("AS_PATH must be present in Update");
+    let local_pref = update
+        .get(Identifier::LOCAL_PREF)
+        .map(|attr| {
+            if let PathAttribute::LOCAL_PREF(local_pref) = attr {
+                Some(*local_pref)
+            } else {
+                unreachable!()
+            }
+        })
+        .unwrap_or(None);
+    let multi_exit_disc = update
+        .get(Identifier::MULTI_EXIT_DISC)
+        .map(|attr| {
+            if let PathAttribute::MULTI_EXIT_DISC(metric) = attr {
+                Some(*metric)
+            } else {
+                unreachable!()
+            }
+        })
+        .unwrap_or(None);
+    let communities = update
+        .get(Identifier::COMMUNITY)
+        .map(|attr| {
+            if let PathAttribute::COMMUNITY(communities) = attr {
+                communities
+                    .iter()
+                    .map(|c| Community::STANDARD(*c))
+                    .collect::<Vec<Community>>()
+            } else {
+                unreachable!()
+            }
+        })
+        .unwrap_or_else(|| vec![]);
+
+    let ext_communities = update
+        .get(Identifier::EXTENDED_COMMUNITIES)
+        .map(|attr| {
+            if let PathAttribute::EXTENDED_COMMUNITIES(communities) = attr {
+                communities
+                    .iter()
+                    .map(|c| Community::EXTENDED(*c))
+                    .collect::<Vec<Community>>()
+            } else {
+                unreachable!()
+            }
+        })
+        .unwrap_or_else(|| vec![]);
+
+    let community_list = CommunityList(
+        communities
+            .into_iter()
+            .chain(ext_communities.into_iter())
+            .collect(),
+    );
+
+    routes
+        .iter()
+        .map(|route| match route {
+            NLRIEncoding::IP(prefix) => Some(prefix),
+            _ => None,
+        })
+        .filter(std::option::Option::is_some)
+        .map(std::option::Option::unwrap)
+        .map(|prefix| Route {
+            peer: router_id,
+            state: RouteState::Received(Utc::now()),
+            prefix: prefix.clone(),
+            next_hop,
+            origin: origin.clone(),
+            as_path: as_path.clone(),
+            local_pref,
+            multi_exit_disc,
+            communities: community_list.clone(),
+        })
+        .collect()
 }

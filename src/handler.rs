@@ -21,17 +21,17 @@ use tokio::timer::Interval;
 use crate::config::ServerConfig;
 // use crate::db::DB;
 use crate::models::Route;
-use crate::session::{Session, SessionMessage};
+use crate::session::{Session, SessionMessage, SessionTx};
 
 type Peers = HashMap<IpAddr, Peer>;
 
-type SessionTx = mpsc::UnboundedSender<SessionMessage>;
-type SessionRx = mpsc::UnboundedReceiver<SessionMessage>;
+type ActiveSession = (Session, SessionTx);
+
 
 pub struct Server {
     tcp_listener: TcpListener,
     idle_peers: Arc<Mutex<Peers>>,
-    sessions: Arc<Mutex<HashMap<SocketAddr, SessionTx>>>,
+    sessions: Arc<Mutex<HashMap<IpAddr, ActiveSession>>>,
     // learned_routes: Arc<Mutex<Vec<Route>>>,
     // advertised_routes: Arc<Mutex<Vec<Route>>>,
     // api_channel: Tx,
@@ -75,47 +75,44 @@ impl Future for Server {
     type Error = ();
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // TCP Listener task
+        // Process all pending incoming connections
         while let Ok(Async::Ready((stream, socket))) = self.tcp_listener.poll_accept() {
             debug!("Incoming new connection from {}", socket.ip());
             if let Some(mut peer) = self.idle_peers.lock().unwrap().remove(&socket.ip()) {
-                peer.update_state(PeerState::OpenSent);
-
-                let peer_insert = {
-                    let peers = self.idle_peers.clone();
-                    move |peer: Option<Peer>| {
-                        if let Some(peer) = peer {
-                            debug!("Adding {} back to idle peers", peer);
-                            peers
-                                .lock()
-                                .map(|mut peers| {
-                                    peers.insert(peer.addr, peer);
-                                })
-                                .ok();
-                        }
-                    }
-                };
-
-                let session = MessageProtocol::new(stream, MessageCodec::new())
-                    .into_future()
-                    .map_err(|(e, _)| e.into())
-                    .and_then(move |(open, protocol)| {
-                        if let Some(Message::Open(open)) = open {
-                            let (updated_protocol, hold_timer) = peer.open_received(open, protocol);
-                            let new_session = Session::new(peer, updated_protocol, hold_timer);
-                            return Either::B(Some(new_session));
-                        } else {
-                            warn!("Invalid first packet received");
-                        }
-                        Either::A(future::ok(None))
-                    })
-                    .map(peer_insert)
-                    .map_err(|e| error!("{}", e));
-                tokio::spawn(session);
+                let (tx, rx) = mpsc::unbounded();
+                let protocol = MessageProtocol::new(stream, MessageCodec::new());
+                let new_session = Session::new(peer, protocol, rx);
+                if let Ok(mut sessions) = self.sessions.lock() {
+                    sessions.insert(socket.ip(), (new_session, tx));
+                }
             } else {
                 warn!("Unexpected connection from {}", socket.ip());
             }
         }
+
+        if let Ok(mut sessions) = self.sessions.lock() {
+            for (addr, (session, _tx)) in sessions.iter_mut() {
+                trace!("Polling Session {}...", addr);
+                match session.poll() {
+                    Ok(Async::Ready(routes)) => {
+                        eprintln!("Received {} routes", routes.len());
+                    },
+                    Err(session_err) => {
+                        if let Some(mut peer) = session_err.peer {
+                            warn!("Session ended with {}: {}", peer, session_err.reason);
+                            if let Ok(mut peers) = self.idle_peers.lock() {
+                                peer.revert_to_idle();
+                                peers.insert(peer.addr, peer);
+                            }
+                        } else {
+                            warn!("Session error: {}", session_err.reason);
+                        }
+                    },
+                    _ => continue,
+                }
+            }
+        }
+
         Ok(Async::NotReady)
     }
 }
