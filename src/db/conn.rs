@@ -23,12 +23,14 @@ impl DB {
         Ok(Self { conn })
     }
 
-    pub fn get_all_routes(&self) -> Result<Vec<Route>> {
+    pub fn get_all_received_routes(&self) -> Result<Vec<Route>> {
         let mut stmt = self.conn.prepare(
             r#"SELECT
-                router_id, received_at, prefix, next_hop,
+                router_id, state, prefix, next_hop,
                 origin, as_path, local_pref, metric, communities
-            FROM routes ORDER BY router_id ASC, prefix ASC"#,
+            FROM routes
+            WHERE state LIKE "r%"
+            ORDER BY router_id ASC, prefix ASC"#,
         )?;
         let route_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
         let mut routes: Vec<Route> = Vec::new();
@@ -41,13 +43,74 @@ impl DB {
         Ok(routes)
     }
 
-    pub fn get_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
-        trace!("Getting routes for peer {}", router_id);
+    pub fn get_received_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
         let mut stmt = self.conn.prepare(
             r#"SELECT
-                router_id, received_at, prefix, next_hop,
+                router_id, state, prefix, next_hop,
                 origin, as_path, local_pref, metric, communities
-            FROM routes WHERE router_id = ?1"#,
+            FROM routes
+            WHERE state LIKE "r%" AND router_id = ?1
+            ORDER BY router_id ASC, prefix ASC"#,
+        )?;
+        let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
+        let mut routes: Vec<Route> = Vec::new();
+        for route in route_iter {
+            match route {
+                Ok(route) => routes.push(route),
+                Err(err) => error!("Error parsing route in RouteDB: {}", err),
+            }
+        }
+        Ok(routes)
+    }
+
+    pub fn get_all_advertised_routes(&self) -> Result<Vec<Route>> {
+        let mut stmt = self.conn.prepare(
+            r#"SELECT
+                router_id, state, prefix, next_hop,
+                origin, as_path, local_pref, metric, communities
+            FROM routes
+            WHERE state LIKE "a%"
+            ORDER BY router_id ASC, prefix ASC"#,
+        )?;
+        let route_iter = stmt.query_map(NO_PARAMS, |row| row.try_into())?;
+        let mut routes: Vec<Route> = Vec::new();
+        for route in route_iter {
+            match route {
+                Ok(route) => routes.push(route),
+                Err(err) => error!("Error parsing route in RouteDB: {}", err),
+            }
+        }
+        Ok(routes)
+    }
+
+    pub fn get_advertised_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
+        trace!("Getting advertised routes for peer {}", router_id);
+        let mut stmt = self.conn.prepare(
+            r#"SELECT
+                router_id, state, prefix, next_hop,
+                origin, as_path, local_pref, metric, communities
+            FROM routes
+            WHERE state LIKE "a%" AND router_id = ?1"#,
+        )?;
+        let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
+        let mut routes: Vec<Route> = Vec::new();
+        for route in route_iter {
+            match route {
+                Ok(route) => routes.push(route),
+                Err(err) => error!("Error parsing route in RouteDB: {}", err),
+            }
+        }
+        Ok(routes)
+    }
+
+    pub fn get_pending_routes_for_peer(&self, router_id: IpAddr) -> Result<Vec<Route>> {
+        trace!("Getting pending routes for peer {}", router_id);
+        let mut stmt = self.conn.prepare(
+            r#"SELECT
+                router_id, state, prefix, next_hop,
+                origin, as_path, local_pref, metric, communities
+            FROM routes
+            WHERE state LIKE "p%" AND router_id = ?1"#,
         )?;
         let route_iter = stmt.query_map(&[&router_id.to_string()], |row| row.try_into())?;
         let mut routes: Vec<Route> = Vec::new();
@@ -65,24 +128,47 @@ impl DB {
         for route in routes {
             let as_path = as_path_to_string(&route.as_path);
             self.conn.execute(
-                r#"REPLACE INTO routes
-                    (router_id, received_at, prefix, next_hop,
+                r#"INSERT INTO routes
+                    (router_id, state, prefix, next_hop,
                     origin, as_path, local_pref, metric, communities)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
-                &[
-                    &route.received_from.to_string(),
-                    &route.received_at.timestamp().to_string(),
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "#,
+                params![
+                    &route.peer.to_string(),
+                    &route.state as &dyn ToSql,
                     &route.prefix.to_string(),
                     &route.next_hop.to_string(),
-                    &((&route.origin).into()),
+                    &String::from(&route.origin),
                     &as_path,
-                    &route.local_pref as &ToSql,
-                    &route.multi_exit_disc as &ToSql,
-                    &route.communities as &ToSql,
+                    &route.local_pref as &dyn ToSql,
+                    &route.multi_exit_disc as &dyn ToSql,
+                    &route.communities as &dyn ToSql,
                 ],
             )?;
-            trace!("\t{:?}", route);
         }
+        Ok(())
+    }
+
+    pub fn update_route(&self, route: &Route) -> Result<()> {
+        trace!("Updating route from {} for {}", route.peer, route.prefix);
+        let as_path = as_path_to_string(&route.as_path);
+        self.conn.execute(
+            r#"UPDATE routes SET
+                state = ?1, next_hop = ?2, origin = ?3, as_path = ?4, local_pref = ?5,
+                metric = ?6, communities=?7
+            WHERE router_id = ?8 AND prefix = ?9"#,
+            params![
+                &route.state as &dyn ToSql,
+                &route.next_hop.to_string(),
+                &String::from(&route.origin),
+                &as_path,
+                &route.local_pref as &dyn ToSql,
+                &route.multi_exit_disc as &dyn ToSql,
+                &route.communities as &dyn ToSql,
+                &route.peer.to_string(),
+                &route.prefix.to_string(),
+            ],
+        )?;
         Ok(())
     }
 

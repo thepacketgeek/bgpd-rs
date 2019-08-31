@@ -1,4 +1,5 @@
 use std::fmt;
+use std::slice::Iter;
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use rusqlite::Result;
@@ -29,6 +30,12 @@ impl fmt::Display for Community {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommunityList(pub Vec<Community>);
+
+impl CommunityList {
+    pub fn iter(&self) -> Iter<Community> {
+        self.0.iter()
+    }
+}
 
 impl fmt::Display for CommunityList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

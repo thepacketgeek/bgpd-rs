@@ -11,6 +11,7 @@ use crate::codec::MessageProtocol;
 use crate::db::DB;
 use crate::models::{
     Community, CommunityList, HoldTimer, MessageCounts, Peer, PeerState, PeerSummary, Route,
+    RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
@@ -142,6 +143,43 @@ impl Future for Session {
                 // Before the Session is dropped, send peer back to idle peers
                 let peer = self.reset_peer();
                 return Ok(Async::Ready(peer));
+            }
+        }
+
+        // Check for routes that need to be advertised
+        // TODO: How to have newly added routes trigger this future to run & advertise
+        //       versus current behavior of waiting for a packet or hold_time
+        if let Ok(db) = DB::new() {
+            let res = db
+                .get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
+                .map(|routes| {
+                    // TODO: Group routes into common attributes and send in groups
+                    for mut route in routes {
+                        // TODO: Modify route for next hop, Origin, Etc...
+
+                        trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
+                        let res = self
+                            .send_message(Message::Update(self.peer.create_update(&route)))
+                            .and_then(|_| {
+                                route.state = RouteState::Advertised(Utc::now());
+                                db.update_route(&route)
+                                    .map_err(|err| Error::new(ErrorKind::BrokenPipe, err))
+                            });
+                        if let Err(err) = res {
+                            warn!(
+                                "Error advertising route to {}: {}",
+                                self.peer.remote_id.router_id.unwrap(),
+                                err
+                            );
+                        }
+                    }
+                });
+            if let Err(err) = res {
+                warn!(
+                    "Error getting pending routes for {}: {}",
+                    self.peer.remote_id.router_id.unwrap(),
+                    err
+                );
             }
         }
 
@@ -291,8 +329,8 @@ pub fn process_message(peer: &mut Peer, message: Message) -> Result<Option<Messa
                     .filter(std::option::Option::is_some)
                     .map(std::option::Option::unwrap)
                     .map(|prefix| Route {
-                        received_from: peer.remote_id.router_id.unwrap(),
-                        received_at: Utc::now(),
+                        peer: peer.remote_id.router_id.unwrap(),
+                        state: RouteState::Received(Utc::now()),
                         prefix: prefix.clone(),
                         next_hop,
                         origin: origin.clone(),
