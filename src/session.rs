@@ -15,6 +15,11 @@ use crate::models::{
 };
 use crate::utils::format_time_as_elapsed;
 
+pub enum SessionMessage {
+    LearnedRoute(Route),
+    AdvertisedRoute(Route),
+}
+
 pub struct Session {
     peer: Box<Peer>,
     protocol: MessageProtocol,

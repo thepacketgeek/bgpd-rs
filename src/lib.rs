@@ -9,4 +9,4 @@ mod utils;
 
 pub use api::API;
 pub use config::ServerConfig;
-pub use handler::serve;
+pub use handler::Server;

@@ -1,5 +1,5 @@
 use std::io::Result;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use env_logger::Builder;
 use futures::future::Future;
@@ -8,7 +8,7 @@ use structopt::StructOpt;
 use tokio::runtime::Runtime;
 use tower_web::ServiceBuilder;
 
-use bgpd::{serve, ServerConfig, API};
+use bgpd::{Server, ServerConfig, API};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd", rename_all = "kebab-case")]
@@ -52,15 +52,18 @@ fn main() -> Result<()> {
     debug!("Found {} peers in {}", config.peers.len(), args.config_path);
 
     let mut runtime = Runtime::new().unwrap();
-    serve(args.address, args.port, config, &mut runtime)?;
+    let socket = SocketAddr::from((args.address, args.port));
+    let server = Server::from_config(socket, config)?;
+    info!("Starting BGP server on {}...", socket);
+    runtime.spawn(server);
 
-    ctrlc::set_handler(move || {
-        info!("Stopping BGPd...");
-        // Remove DB
-        std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting DB");
-        std::process::exit(0);
-    })
-    .expect("Error setting Ctrl-C handler");
+    // ctrlc::set_handler(move || {
+    //     info!("Stopping BGPd...");
+    //     // Remove DB
+    //     // std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting DB");
+    //     // std::process::exit(0);
+    // })
+    // .expect("Error setting Ctrl-C handler");
 
     let http_socket = (args.http_addr, args.http_port).into();
     ServiceBuilder::new()
