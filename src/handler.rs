@@ -21,7 +21,7 @@ use tokio::timer::Interval;
 use crate::config::ServerConfig;
 // use crate::db::DB;
 use crate::models::Route;
-use crate::session::{Session, SessionRx};
+use crate::session::{Session, SessionRoutes, SessionRx};
 
 type Peers = HashMap<IpAddr, Peer>;
 
@@ -102,31 +102,49 @@ impl Future for Server {
         }
 
         if let Ok(mut sessions) = self.inner.sessions.lock() {
-            for (_addr, (session, rx)) in sessions.iter_mut() {
+            for (addr, (session, rx)) in sessions.iter_mut() {
                 match session.poll() {
                     Ok(Async::Ready(routes)) => {
                         eprintln!("Received {} routes", routes.len());
                     }
                     Err(session_err) => {
-                        if let Some(mut peer) = session_err.peer {
-                            warn!("Session ended with {}: {}", peer, session_err.reason);
-                            if let Ok(mut peers) = self.inner.idle_peers.lock() {
-                                peer.revert_to_idle();
-                                peers.insert(peer.addr, peer);
+                        warn!("Session ended with {}: {}", addr, session_err.reason);
+                        if let Ok(mut sessions) = self.inner.sessions.lock() {
+                            if let Some((mut session, _)) = sessions.remove(&addr) {
+                                let mut peer = session.reset_peer();
+                                if let Ok(mut peers) = self.inner.idle_peers.lock() {
+                                    peer.revert_to_idle();
+                                    peers.insert(peer.addr, peer);
+                                }
                             }
-                        } else {
-                            warn!("Session error: {}", session_err.reason);
                         }
                     }
                     _ => (),
                 }
                 while let Ok(Async::Ready(Some(routes))) = rx.poll() {
-                    debug!("Incoming routes: {}", routes.len());
-                    self.inner
-                        .learned_routes
-                        .lock()
-                        .map(|mut lr| lr.extend(routes))
-                        .map_err(|err| error!("Error adding learned routes: {}", err));
+                    match routes {
+                        SessionRoutes::Learned(routes) => {
+                            debug!("Incoming routes: {}", routes.len());
+                            if let Err(err) = self
+                                .inner
+                                .learned_routes
+                                .lock()
+                                .map(|mut lr| lr.extend(routes))
+                            {
+                                error!("Error adding learned routes: {}", err);
+                            }
+                        }
+                        SessionRoutes::Advertised(routes) => {
+                            if let Err(err) = self
+                                .inner
+                                .advertised_routes
+                                .lock()
+                                .map(|mut lr| lr.extend(routes))
+                            {
+                                error!("Error adding advertised routes: {}", err);
+                            }
+                        }
+                    }
                 }
 
                 // self.inner.advertised_routes.lock().unwrap().iter().filter(|r| r.peer == session.peer.).map(|route| session.advertised_route(route));

@@ -16,21 +16,22 @@ use crate::models::{
 };
 use crate::utils::format_time_as_elapsed;
 
-pub type SessionTx = mpsc::UnboundedSender<Vec<Route>>;
-pub type SessionRx = mpsc::UnboundedReceiver<Vec<Route>>;
+pub type SessionTx = mpsc::UnboundedSender<SessionRoutes>;
+pub type SessionRx = mpsc::UnboundedReceiver<SessionRoutes>;
 
-pub enum SessionMessage {
-    LearnedRoutes(Route),
-    AdvertisedRoute(Route),
+pub enum SessionRoutes {
+    Learned(Vec<Route>),
+    Advertised(Vec<Route>),
 }
 
 pub struct Session {
-    peer: Box<Peer>,
+    pub(crate) peer: Box<Peer>,
     protocol: MessageProtocol,
     tx: SessionTx,
     connect_time: DateTime<Utc>,
     hold_timer: HoldTimer,
     counts: MessageCounts,
+    pending_routes: Vec<Route>,
 }
 
 impl Session {
@@ -43,6 +44,7 @@ impl Session {
             connect_time: Utc::now(),
             hold_timer: HoldTimer::new(hold_timer),
             counts: MessageCounts::new(),
+            pending_routes: vec![],
         }
     }
 
@@ -60,12 +62,8 @@ impl Session {
         }
     }
 
-    /// Receives a pending route, sends, and returns the advertised route
-    pub fn advertise_route(&mut self, mut route: Route) -> Result<Route, Error> {
-        trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
-        self.send_message(Message::Update(self.peer.create_update(&route)))?;
-        route.state = RouteState::Advertised(Utc::now());
-        Ok(route)
+    pub fn add_pending_routes(&mut self, routes: Vec<Route>) {
+        self.pending_routes.extend(routes);
     }
 
     // Send a message, and flush the send buffer afterwards
@@ -80,7 +78,7 @@ impl Session {
 
     // Prep the peer to send back to the Idle Peers HashMap
     // In order to do that, reset the Session's Peer with an empty Peer struct
-    fn reset_peer(&mut self) -> Peer {
+    pub fn reset_peer(&mut self) -> Peer {
         let peer = std::mem::replace(&mut self.peer, Box::new(Peer::default()));
         *peer
     }
@@ -128,7 +126,6 @@ impl Future for Session {
                         self.send_message(Message::Open(open))
                             .map_err(|e| SessionError {
                                 reason: e.to_string(),
-                                peer: Some(self.reset_peer()),
                             })
                             .ok();
                         self.peer.update_state(PeerState::Established);
@@ -137,7 +134,9 @@ impl Future for Session {
                         self.send_message(message)?;
                     }
                     MessageResponse::LearnedRoutes(routes) => {
-                        self.tx.unbounded_send(routes).unwrap();
+                        self.tx
+                            .unbounded_send(SessionRoutes::Learned(routes))
+                            .unwrap();
                         // TODO: Make this a stream instead of using a channel?
                         // return Ok(Async::Ready(routes));
                         ()
@@ -153,9 +152,21 @@ impl Future for Session {
                         self.peer.remote_id.router_id.unwrap(),
                         self.peer.addr
                     ),
-                    peer: Some(self.reset_peer()),
                 });
             }
+        }
+
+        if !self.pending_routes.is_empty() {
+            let mut advertised: Vec<Route> = vec![];
+            while let Some(mut route) = self.pending_routes.pop() {
+                trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
+                self.send_message(Message::Update(self.peer.create_update(&route)))?;
+                route.state = RouteState::Advertised(Utc::now());
+                advertised.push(route);
+            }
+            self.tx
+                .unbounded_send(SessionRoutes::Advertised(advertised))
+                .unwrap();
         }
 
         // Check for hold time expiration (send keepalive if not expired)
@@ -163,13 +174,11 @@ impl Future for Session {
             if self.hold_timer.get_hold_time() == Duration::seconds(0) {
                 return Err(SessionError {
                     reason: format!("Hold Time Expired [{}]: {}", self.hold_timer, self.peer),
-                    peer: Some(self.reset_peer()),
                 });
             } else if self.hold_timer.should_send_keepalive() {
                 self.send_message(Message::KeepAlive)
                     .map_err(|e| SessionError {
                         reason: e.to_string(),
-                        peer: Some(self.reset_peer()),
                     })
                     .ok();
             }
@@ -183,17 +192,11 @@ impl Future for Session {
 #[derive(Debug)]
 pub struct SessionError {
     pub reason: String,
-    pub peer: Option<Peer>,
 }
 
 impl fmt::Display for SessionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let peer = if let Some(peer) = &self.peer {
-            format!("{}", peer)
-        } else {
-            "No Peer".to_string()
-        };
-        write!(f, "Session Error: {}: {}", self.reason, peer)
+        write!(f, "Session Error: {}", self.reason)
     }
 }
 
@@ -201,7 +204,6 @@ impl From<Error> for SessionError {
     fn from(error: Error) -> Self {
         SessionError {
             reason: error.to_string(),
-            peer: None,
         }
     }
 }
