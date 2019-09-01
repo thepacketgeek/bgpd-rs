@@ -1,3 +1,4 @@
+use std::convert::From;
 use std::net::IpAddr;
 
 use bgp_rs::Segment;
@@ -21,8 +22,8 @@ pub struct LearnedRoute {
     communities: Vec<String>,
 }
 
-impl LearnedRoute {
-    pub fn from_route(route: &Route) -> Self {
+impl From<&Route> for LearnedRoute {
+    fn from(route: &Route) -> Self {
         let received_at = match route.state {
             RouteState::Received(timestamp) => timestamp,
             _ => unreachable!(),
@@ -78,8 +79,8 @@ pub struct AdvertisedRoute {
     communities: Vec<String>,
 }
 
-impl AdvertisedRoute {
-    pub fn from_route(route: &Route) -> Self {
+impl From<&Route> for AdvertisedRoute {
+    fn from(route: &Route) -> Self {
         let sent_at = match route.state {
             RouteState::Advertised(timestamp) => timestamp,
             _ => unreachable!(),

@@ -1,3 +1,4 @@
+use std::convert::From;
 use std::fmt;
 use std::io::Error;
 
@@ -8,7 +9,6 @@ use futures::{Async, Poll, Stream};
 use log::trace;
 use tokio::prelude::*;
 
-use crate::api::PeerSummary;
 use crate::codec::MessageProtocol;
 use crate::models::{
     HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, PendingRoutes, Route, RouteState,
@@ -27,9 +27,9 @@ pub struct Session {
     pub(crate) peer: Box<Peer>,
     protocol: MessageProtocol,
     tx: SessionTx,
-    connect_time: DateTime<Utc>,
-    hold_timer: HoldTimer,
-    counts: MessageCounts,
+    pub(crate) connect_time: DateTime<Utc>,
+    pub(crate) hold_timer: HoldTimer,
+    pub(crate) counts: MessageCounts,
     pending_routes: PendingRoutes,
 }
 
@@ -44,20 +44,6 @@ impl Session {
             hold_timer: HoldTimer::new(hold_timer),
             counts: MessageCounts::new(),
             pending_routes: PendingRoutes::new(),
-        }
-    }
-
-    pub fn get_summary(&self) -> PeerSummary {
-        PeerSummary {
-            peer: self.peer.addr,
-            router_id: self.peer.remote_id.router_id,
-            asn: self.peer.remote_id.asn,
-            msg_received: Some(self.counts.received()),
-            msg_sent: Some(self.counts.sent()),
-            connect_time: Some(self.connect_time.timestamp()),
-            uptime: Some(format_time_as_elapsed(self.connect_time)),
-            state: self.peer.get_state().to_string(),
-            prefixes_received: None,
         }
     }
 

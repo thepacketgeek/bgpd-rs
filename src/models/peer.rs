@@ -12,7 +12,6 @@ use chrono::Utc;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
-use crate::api::PeerSummary;
 use crate::codec::capabilities_from_params;
 use crate::models::{Community, CommunityList, Route, RouteState};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
@@ -124,20 +123,6 @@ impl Peer {
 
     pub fn get_state(&self) -> PeerState {
         self.state
-    }
-
-    pub fn get_summary(&self) -> PeerSummary {
-        PeerSummary {
-            peer: self.addr,
-            router_id: self.remote_id.router_id,
-            asn: self.remote_id.asn,
-            msg_received: None,
-            msg_sent: None,
-            connect_time: None,
-            uptime: None,
-            state: self.state.to_string(),
-            prefixes_received: None,
-        }
     }
 
     pub fn update_state(&mut self, new_state: PeerState) {

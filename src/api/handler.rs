@@ -14,7 +14,7 @@ use crate::models::{CommunityList, Route, RouteState};
 use crate::utils::prefix_from_string;
 
 use super::peers::{PeerSummaries, PeerSummary};
-use super::routes::{AdvertisedRoute, AdvertisedRoutes, LearnedRoute, LearnedRoutes};
+use super::routes::{AdvertisedRoutes, LearnedRoutes};
 
 pub struct API(pub Arc<State>);
 
@@ -33,13 +33,13 @@ impl_web! {
         fn show_neighbors(&self) -> Result<PeerSummaries, Error> {
             let mut output: Vec<PeerSummary> = vec![];
             self.0.idle_peers.lock().map(|peers| {
-                output.extend(peers.iter().map(|(_, p)| p.get_summary()).collect::<Vec<_>>());
+                output.extend(peers.iter().map(|(_, p)| p.into()).collect::<Vec<_>>());
             }).map_err(|err| {
                 error!("Error fetching peers: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
             })?;
             self.0.sessions.lock().map(|sessions| {
-                output.extend(sessions.iter().map(|(_, s)| s.0.get_summary()).collect::<Vec<_>>());
+                output.extend(sessions.iter().map(|(_, (s, _))| s.into()).collect::<Vec<_>>());
             }).map_err(|err| {
                 error!("Error fetching sessions: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
@@ -51,7 +51,7 @@ impl_web! {
         #[content_type("json")]
         fn show_routes_learned(&self) -> Result<LearnedRoutes, Error> {
             self.0.learned_routes.lock().map(|routes|{
-                Ok(LearnedRoutes(routes.iter().map(|r| LearnedRoute::from_route(&r)).collect()))
+                Ok(LearnedRoutes(routes.iter().map(|r| r.into()).collect()))
             }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
@@ -64,7 +64,7 @@ impl_web! {
             let router_id = router_id.parse::<IpAddr>()
                 .map_err(|_err| Error::builder().status(StatusCode::BAD_REQUEST).detail("Invalid Router ID").build())?;
             self.0.learned_routes.lock().map(move |routes| {
-                Ok(LearnedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| LearnedRoute::from_route(&r)).collect()))
+                Ok(LearnedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| r.into()).collect()))
             }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
@@ -75,7 +75,7 @@ impl_web! {
         #[content_type("json")]
         fn show_routes_advertised(&self) -> Result<AdvertisedRoutes, Error> {
             self.0.advertised_routes.lock().map(|routes|{
-                Ok(AdvertisedRoutes(routes.iter().map(|r| AdvertisedRoute::from_route(&r)).collect()))
+                Ok(AdvertisedRoutes(routes.iter().map(|r| r.into()).collect()))
             }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
@@ -88,7 +88,7 @@ impl_web! {
             let router_id = router_id.parse::<IpAddr>()
                 .map_err(|_err| Error::builder().status(StatusCode::BAD_REQUEST).detail("Invalid Router ID").build())?;
             self.0.advertised_routes.lock().map(move |routes| {
-                Ok(AdvertisedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| AdvertisedRoute::from_route(&r)).collect()))
+                Ok(AdvertisedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| r.into()).collect()))
             }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
