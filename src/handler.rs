@@ -33,7 +33,6 @@ pub struct State {
     pub(crate) learned_routes: Arc<Mutex<Vec<Route>>>,
     pub(crate) pending_routes: Arc<Mutex<Vec<Route>>>,
     pub(crate) advertised_routes: Arc<Mutex<Vec<Route>>>,
-    // api_channel: Tx,
 }
 
 impl Server {
@@ -159,8 +158,6 @@ impl Future for Server {
                 }
             }
         }
-
-        eprintln!("--");
         Ok(Async::NotReady)
     }
 }

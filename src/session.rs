@@ -11,7 +11,7 @@ use tokio::prelude::*;
 use crate::api::PeerSummary;
 use crate::codec::MessageProtocol;
 use crate::models::{
-    HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, Route, RouteState,
+    HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, PendingRoutes, Route, RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
@@ -30,7 +30,7 @@ pub struct Session {
     connect_time: DateTime<Utc>,
     hold_timer: HoldTimer,
     counts: MessageCounts,
-    pending_routes: Vec<Route>,
+    pending_routes: PendingRoutes,
 }
 
 impl Session {
@@ -43,7 +43,7 @@ impl Session {
             connect_time: Utc::now(),
             hold_timer: HoldTimer::new(hold_timer),
             counts: MessageCounts::new(),
-            pending_routes: vec![],
+            pending_routes: PendingRoutes::new(),
         }
     }
 
@@ -62,7 +62,9 @@ impl Session {
     }
 
     pub fn add_pending_routes(&mut self, routes: Vec<Route>) {
-        self.pending_routes.extend(routes);
+        for route in routes {
+            self.pending_routes.push(route);
+        }
     }
 
     // Send a message, and flush the send buffer afterwards
@@ -155,16 +157,12 @@ impl Future for Session {
             }
         }
 
-        if !self.pending_routes.is_empty() {
-            let mut advertised: Vec<Route> = vec![];
-            while let Some(mut route) = self.pending_routes.pop() {
-                trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
-                self.send_message(Message::Update(self.peer.create_update(&route)))?;
-                route.state = RouteState::Advertised(Utc::now());
-                advertised.push(route);
-            }
+        while let Ok(Async::Ready(Some(mut route))) = self.pending_routes.poll() {
+            trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
+            self.send_message(Message::Update(self.peer.create_update(&route)))?;
+            route.state = RouteState::Advertised(Utc::now());
             self.tx
-                .unbounded_send(SessionRoutes::Advertised(advertised))
+                .unbounded_send(SessionRoutes::Advertised(vec![route]))
                 .unwrap();
         }
 
