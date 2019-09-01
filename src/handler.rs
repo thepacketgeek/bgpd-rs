@@ -28,11 +28,16 @@ type Peers = HashMap<IpAddr, Peer>;
 type ActiveSession = (Session, SessionRx);
 
 pub struct Server {
+    inner: Arc<State>,
     tcp_listener: TcpListener,
-    idle_peers: Arc<Mutex<Peers>>,
-    sessions: Arc<Mutex<HashMap<IpAddr, ActiveSession>>>,
-    learned_routes: Arc<Mutex<Vec<Route>>>,
-    // advertised_routes: Arc<Mutex<Vec<Route>>>,
+}
+
+pub struct State {
+    pub(crate) idle_peers: Arc<Mutex<Peers>>,
+    pub(crate) sessions: Arc<Mutex<HashMap<IpAddr, ActiveSession>>>,
+    pub(crate) learned_routes: Arc<Mutex<Vec<Route>>>,
+    pub(crate) pending_routes: Arc<Mutex<Vec<Route>>>,
+    pub(crate) advertised_routes: Arc<Mutex<Vec<Route>>>,
     // api_channel: Tx,
 }
 
@@ -60,12 +65,19 @@ impl Server {
             .collect();
 
         Ok(Self {
+            inner: Arc::new(State {
+                idle_peers: Arc::new(Mutex::new(idle_peers)),
+                sessions: Arc::new(Mutex::new(HashMap::new())),
+                learned_routes: Arc::new(Mutex::new(Vec::new())),
+                advertised_routes: Arc::new(Mutex::new(Vec::new())),
+                pending_routes: Arc::new(Mutex::new(Vec::new())),
+            }),
             tcp_listener: TcpListener::bind(&socket)?,
-            idle_peers: Arc::new(Mutex::new(idle_peers)),
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-            learned_routes: Arc::new(Mutex::new(Vec::new())),
-            // advertised_routes: Arc::new(Mutex::new(Vec::new())),
         })
+    }
+
+    pub fn clone_state(&self) -> Arc<State> {
+        self.inner.clone()
     }
 }
 
@@ -77,11 +89,11 @@ impl Future for Server {
         // Process all pending incoming connections
         while let Ok(Async::Ready((stream, socket))) = self.tcp_listener.poll_accept() {
             debug!("Incoming new connection from {}", socket.ip());
-            if let Some(peer) = self.idle_peers.lock().unwrap().remove(&socket.ip()) {
+            if let Some(peer) = self.inner.idle_peers.lock().unwrap().remove(&socket.ip()) {
                 let (tx, rx) = mpsc::unbounded();
                 let protocol = MessageProtocol::new(stream, MessageCodec::new());
                 let new_session = Session::new(peer, protocol, tx);
-                if let Ok(mut sessions) = self.sessions.lock() {
+                if let Ok(mut sessions) = self.inner.sessions.lock() {
                     sessions.insert(socket.ip(), (new_session, rx));
                 }
             } else {
@@ -89,7 +101,7 @@ impl Future for Server {
             }
         }
 
-        if let Ok(mut sessions) = self.sessions.lock() {
+        if let Ok(mut sessions) = self.inner.sessions.lock() {
             for (_addr, (session, rx)) in sessions.iter_mut() {
                 match session.poll() {
                     Ok(Async::Ready(routes)) => {
@@ -98,7 +110,7 @@ impl Future for Server {
                     Err(session_err) => {
                         if let Some(mut peer) = session_err.peer {
                             warn!("Session ended with {}: {}", peer, session_err.reason);
-                            if let Ok(mut peers) = self.idle_peers.lock() {
+                            if let Ok(mut peers) = self.inner.idle_peers.lock() {
                                 peer.revert_to_idle();
                                 peers.insert(peer.addr, peer);
                             }
@@ -110,11 +122,14 @@ impl Future for Server {
                 }
                 while let Ok(Async::Ready(Some(routes))) = rx.poll() {
                     debug!("Incoming routes: {}", routes.len());
-                    self.learned_routes
+                    self.inner
+                        .learned_routes
                         .lock()
                         .map(|mut lr| lr.extend(routes))
                         .map_err(|err| error!("Error adding learned routes: {}", err));
                 }
+
+                // self.inner.advertised_routes.lock().unwrap().iter().filter(|r| r.peer == session.peer.).map(|route| session.advertised_route(route));
             }
         }
 

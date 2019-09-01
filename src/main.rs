@@ -54,20 +54,13 @@ fn main() -> Result<()> {
     let mut runtime = Runtime::new().unwrap();
     let socket = SocketAddr::from((args.address, args.port));
     let server = Server::from_config(socket, config)?;
+    let state = server.clone_state();
     info!("Starting BGP server on {}...", socket);
     runtime.spawn(server);
 
-    // ctrlc::set_handler(move || {
-    //     info!("Stopping BGPd...");
-    //     // Remove DB
-    //     // std::fs::remove_file("/tmp/bgpd.sqlite3").expect("Error deleting DB");
-    //     // std::process::exit(0);
-    // })
-    // .expect("Error setting Ctrl-C handler");
-
     let http_socket = (args.http_addr, args.http_port).into();
     ServiceBuilder::new()
-        .resource(API)
+        .resource(API(state))
         .run(&http_socket)
         .unwrap();
     runtime.shutdown_on_idle().wait().unwrap();

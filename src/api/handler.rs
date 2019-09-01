@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use bgp_rs::{ASPath, Origin};
 use chrono::Utc;
@@ -8,15 +9,14 @@ use serde_json::json;
 use tower_web::error::Error;
 use tower_web::*;
 
-use crate::db::DB;
+use crate::handler::State;
 use crate::models::{CommunityList, Route, RouteState};
-use crate::utils::{format_time_as_elapsed, prefix_from_string};
+use crate::utils::prefix_from_string;
 
 use super::peers::{PeerSummaries, PeerSummary};
-use super::routes::{AdvertisedRoutes, LearnedRoutes};
+use super::routes::{AdvertisedRoute, AdvertisedRoutes, LearnedRoute, LearnedRoutes};
 
-#[derive(Clone, Debug)]
-pub struct API;
+pub struct API(pub Arc<State>);
 
 #[derive(Debug, Extract)]
 struct AdvertisePrefixData {
@@ -31,37 +31,31 @@ impl_web! {
         #[get("/show/neighbors")]
         #[content_type("json")]
         fn show_neighbors(&self) -> Result<PeerSummaries, Error> {
-            let peers = DB::new().and_then(|db| db.get_all_peers()).map_err(|err| {
-                error!("Error fetching all peers: {}", err);
+            let mut output: Vec<PeerSummary> = vec![];
+            self.0.idle_peers.lock().map(|peers| {
+                output.extend(peers.iter().map(|(_, p)| p.get_summary()).collect::<Vec<_>>());
+            }).map_err(|err| {
+                error!("Error fetching peers: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
             })?;
-            let output: Vec<PeerSummary> = peers
-                .iter()
-                .map(|peer| PeerSummary {
-                    peer: peer.neighbor,
-                    router_id: peer.router_id,
-                    asn: peer.asn,
-                    msg_received: peer.msg_received,
-                    msg_sent: peer.msg_sent,
-                    connect_time: peer.connect_time.map(|time| time.timestamp()),
-                    uptime: peer.connect_time.map(format_time_as_elapsed),
-                    state: peer.state.to_string(),
-                    prefixes_received: peer.prefixes_received,
-                })
-                .collect();
+            self.0.sessions.lock().map(|sessions| {
+                output.extend(sessions.iter().map(|(_, s)| s.0.get_summary()).collect::<Vec<_>>());
+            }).map_err(|err| {
+                error!("Error fetching sessions: {}", err);
+                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
             Ok(PeerSummaries(output))
         }
 
         #[get("/show/routes/learned")]
         #[content_type("json")]
         fn show_routes_learned(&self) -> Result<LearnedRoutes, Error> {
-            let query = DB::new().and_then(|db| db.get_all_received_routes());
-            let routes = query.map_err(|err| {
+            self.0.learned_routes.lock().map(|routes|{
+                Ok(LearnedRoutes(routes.iter().map(|r| LearnedRoute::from_route(&r)).collect()))
+            }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-
-            Ok(LearnedRoutes::from_db(routes))
+            })?
         }
 
         #[get("/show/routes/learned/:router_id")]
@@ -69,26 +63,23 @@ impl_web! {
         fn show_routes_learned_for_peer(&self, router_id: String) -> Result<LearnedRoutes, Error> {
             let router_id = router_id.parse::<IpAddr>()
                 .map_err(|_err| Error::builder().status(StatusCode::BAD_REQUEST).detail("Invalid Router ID").build())?;
-            let query = DB::new().and_then(|db| db.get_received_routes_for_peer(router_id));
-
-            let routes = query.map_err(|err| {
+            self.0.learned_routes.lock().map(move |routes| {
+                Ok(LearnedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| LearnedRoute::from_route(&r)).collect()))
+            }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-
-            Ok(LearnedRoutes::from_db(routes))
+            })?
         }
 
         #[get("/show/routes/advertised")]
         #[content_type("json")]
         fn show_routes_advertised(&self) -> Result<AdvertisedRoutes, Error> {
-            let query = DB::new().and_then(|db| db.get_all_advertised_routes());
-            let routes = query.map_err(|err| {
+            self.0.advertised_routes.lock().map(|routes|{
+                Ok(AdvertisedRoutes(routes.iter().map(|r| AdvertisedRoute::from_route(&r)).collect()))
+            }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-
-            Ok(AdvertisedRoutes::from_db(routes))
+            })?
         }
 
         #[get("/show/routes/advertised/:router_id")]
@@ -96,14 +87,12 @@ impl_web! {
         fn show_routes_advertised_for_peer(&self, router_id: String) -> Result<AdvertisedRoutes, Error> {
             let router_id = router_id.parse::<IpAddr>()
                 .map_err(|_err| Error::builder().status(StatusCode::BAD_REQUEST).detail("Invalid Router ID").build())?;
-            let query = DB::new().and_then(|db| db.get_advertised_routes_for_peer(router_id));
-
-            let routes = query.map_err(|err| {
+            self.0.advertised_routes.lock().map(move |routes| {
+                Ok(AdvertisedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| AdvertisedRoute::from_route(&r)).collect()))
+            }).map_err(|err| {
                 error!("Error fetching routes: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-
-            Ok(AdvertisedRoutes::from_db(routes))
+            })?
         }
 
         #[post("/advertise/prefix")]
@@ -130,7 +119,12 @@ impl_web! {
                 communities: CommunityList(vec![]),
             };
 
-            DB::new().and_then(|db| db.insert_routes(vec![route])).map_err(|_err| Error::new("Internal Server Error", "", StatusCode::INTERNAL_SERVER_ERROR))?;
+            self.0.pending_routes.lock().map(|mut p_routes| {
+                p_routes.push(route);
+            }).map_err(|err| {
+                error!("Error adding route: {}", err);
+                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
             Ok(json!({ "status": "success", }))
         }
     }

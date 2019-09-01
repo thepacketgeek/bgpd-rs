@@ -8,10 +8,11 @@ use futures::{Async, Poll, Stream};
 use log::{error, trace, warn};
 use tokio::prelude::*;
 
+use crate::api::PeerSummary;
 use crate::codec::MessageProtocol;
 use crate::models::{
-    Community, CommunityList, HoldTimer, MessageCounts, MessageResponse, Peer, PeerState,
-    PeerSummary, Route, RouteState,
+    Community, CommunityList, HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, Route,
+    RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
@@ -45,6 +46,28 @@ impl Session {
         }
     }
 
+    pub fn get_summary(&self) -> PeerSummary {
+        PeerSummary {
+            peer: self.peer.addr,
+            router_id: self.peer.remote_id.router_id,
+            asn: self.peer.remote_id.asn,
+            msg_received: Some(self.counts.received()),
+            msg_sent: Some(self.counts.sent()),
+            connect_time: Some(self.connect_time.timestamp()),
+            uptime: Some(format_time_as_elapsed(self.connect_time)),
+            state: self.peer.get_state().to_string(),
+            prefixes_received: None,
+        }
+    }
+
+    /// Receives a pending route, sends, and returns the advertised route
+    pub fn advertise_route(&mut self, mut route: Route) -> Result<Route, Error> {
+        trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
+        self.send_message(Message::Update(self.peer.create_update(&route)))?;
+        route.state = RouteState::Advertised(Utc::now());
+        Ok(route)
+    }
+
     // Send a message, and flush the send buffer afterwards
     fn send_message(&mut self, message: Message) -> Result<(), Error> {
         trace!("[{}] Outgoing: {:?}", self.peer.addr, message);
@@ -54,25 +77,6 @@ impl Session {
         self.counts.increment_sent();
         Ok(())
     }
-
-    // fn update_peer_summary(&self) {
-    //     DB::new()
-    //         .and_then(|db| {
-    //             let summary = PeerSummary {
-    //                 neighbor: self.peer.addr,
-    //                 router_id: self.peer.remote_id.router_id,
-    //                 asn: self.peer.remote_id.asn,
-    //                 msg_received: Some(self.counts.received()),
-    //                 msg_sent: Some(self.counts.sent()),
-    //                 connect_time: Some(self.connect_time),
-    //                 state: self.peer.get_state(),
-    //                 prefixes_received: None,
-    //             };
-    //             db.update_peer(&summary)
-    //         })
-    //         .map_err(|err| error!("{:?}", err))
-    //         .ok();
-    // }
 
     // Prep the peer to send back to the Idle Peers HashMap
     // In order to do that, reset the Session's Peer with an empty Peer struct
@@ -134,16 +138,12 @@ impl Future for Session {
                     }
                     MessageResponse::LearnedRoutes(routes) => {
                         self.tx.unbounded_send(routes).unwrap();
+                        // TODO: Make this a stream instead of using a channel?
                         // return Ok(Async::Ready(routes));
                         ()
                     }
                     _ => (),
                 }
-                // .map_err(|e| SessionError {
-                //     reason: e.to_string(),
-                //     peer: Some(self.reset_peer()),
-                // })
-                // .ok();
                 self.hold_timer.received_update();
             } else {
                 // Before the Session is dropped, send peer back to idle peers
@@ -157,43 +157,6 @@ impl Future for Session {
                 });
             }
         }
-
-        // Check for routes that need to be advertised
-        // TODO: How to have newly added routes trigger this future to run & advertise
-        //       versus current behavior of waiting for a packet or hold_time
-        // if let Ok(db) = DB::new() {
-        //     let res = db
-        //         .get_pending_routes_for_peer(self.peer.remote_id.router_id.unwrap())
-        //         .map(|routes| {
-        //             // TODO: Group routes into common attributes and send in groups
-        //             for mut route in routes {
-        //                 // TODO: Modify route for next hop, Origin, Etc...
-
-        //                 trace!("Sending route for {} to {}", route.prefix, self.peer.addr);
-        //                 let res = self
-        //                     .send_message(Message::Update(self.peer.create_update(&route)))
-        //                     .and_then(|_| {
-        //                         route.state = RouteState::Advertised(Utc::now());
-        //                         db.update_route(&route)
-        //                             .map_err(|err| Error::new(ErrorKind::BrokenPipe, err))
-        //                     });
-        //                 if let Err(err) = res {
-        //                     warn!(
-        //                         "Error advertising route to {}: {}",
-        //                         self.peer.remote_id.router_id.unwrap(),
-        //                         err
-        //                     );
-        //                 }
-        //             }
-        //         });
-        //     if let Err(err) = res {
-        //         warn!(
-        //             "Error getting pending routes for {}: {}",
-        //             self.peer.remote_id.router_id.unwrap(),
-        //             err
-        //         );
-        //     }
-        // }
 
         // Check for hold time expiration (send keepalive if not expired)
         while let Ok(Async::Ready(_)) = self.hold_timer.poll() {
