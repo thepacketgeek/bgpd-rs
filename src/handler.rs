@@ -21,18 +21,17 @@ use tokio::timer::Interval;
 use crate::config::ServerConfig;
 // use crate::db::DB;
 use crate::models::Route;
-use crate::session::{Session, SessionMessage, SessionTx};
+use crate::session::{Session, SessionRx};
 
 type Peers = HashMap<IpAddr, Peer>;
 
-type ActiveSession = (Session, SessionTx);
-
+type ActiveSession = (Session, SessionRx);
 
 pub struct Server {
     tcp_listener: TcpListener,
     idle_peers: Arc<Mutex<Peers>>,
     sessions: Arc<Mutex<HashMap<IpAddr, ActiveSession>>>,
-    // learned_routes: Arc<Mutex<Vec<Route>>>,
+    learned_routes: Arc<Mutex<Vec<Route>>>,
     // advertised_routes: Arc<Mutex<Vec<Route>>>,
     // api_channel: Tx,
 }
@@ -64,7 +63,7 @@ impl Server {
             tcp_listener: TcpListener::bind(&socket)?,
             idle_peers: Arc::new(Mutex::new(idle_peers)),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            // learned_routes: Arc::new(Mutex::new(Vec::new())),
+            learned_routes: Arc::new(Mutex::new(Vec::new())),
             // advertised_routes: Arc::new(Mutex::new(Vec::new())),
         })
     }
@@ -78,12 +77,12 @@ impl Future for Server {
         // Process all pending incoming connections
         while let Ok(Async::Ready((stream, socket))) = self.tcp_listener.poll_accept() {
             debug!("Incoming new connection from {}", socket.ip());
-            if let Some(mut peer) = self.idle_peers.lock().unwrap().remove(&socket.ip()) {
+            if let Some(peer) = self.idle_peers.lock().unwrap().remove(&socket.ip()) {
                 let (tx, rx) = mpsc::unbounded();
                 let protocol = MessageProtocol::new(stream, MessageCodec::new());
-                let new_session = Session::new(peer, protocol, rx);
+                let new_session = Session::new(peer, protocol, tx);
                 if let Ok(mut sessions) = self.sessions.lock() {
-                    sessions.insert(socket.ip(), (new_session, tx));
+                    sessions.insert(socket.ip(), (new_session, rx));
                 }
             } else {
                 warn!("Unexpected connection from {}", socket.ip());
@@ -91,12 +90,11 @@ impl Future for Server {
         }
 
         if let Ok(mut sessions) = self.sessions.lock() {
-            for (addr, (session, _tx)) in sessions.iter_mut() {
-                trace!("Polling Session {}...", addr);
+            for (_addr, (session, rx)) in sessions.iter_mut() {
                 match session.poll() {
                     Ok(Async::Ready(routes)) => {
                         eprintln!("Received {} routes", routes.len());
-                    },
+                    }
                     Err(session_err) => {
                         if let Some(mut peer) = session_err.peer {
                             warn!("Session ended with {}: {}", peer, session_err.reason);
@@ -107,12 +105,20 @@ impl Future for Server {
                         } else {
                             warn!("Session error: {}", session_err.reason);
                         }
-                    },
-                    _ => continue,
+                    }
+                    _ => (),
+                }
+                while let Ok(Async::Ready(Some(routes))) = rx.poll() {
+                    debug!("Incoming routes: {}", routes.len());
+                    self.learned_routes
+                        .lock()
+                        .map(|mut lr| lr.extend(routes))
+                        .map_err(|err| error!("Error adding learned routes: {}", err));
                 }
             }
         }
 
+        eprintln!("--");
         Ok(Async::NotReady)
     }
 }

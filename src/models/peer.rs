@@ -12,7 +12,7 @@ use chrono::Utc;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
-use crate::codec::{capabilities_from_params, MessageProtocol};
+use crate::codec::capabilities_from_params;
 use crate::models::{Community, CommunityList, Route, RouteState};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
 

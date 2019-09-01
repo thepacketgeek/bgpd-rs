@@ -9,38 +9,36 @@ use log::{error, trace, warn};
 use tokio::prelude::*;
 
 use crate::codec::MessageProtocol;
-// use crate::db::DB;
 use crate::models::{
-    Community, CommunityList, HoldTimer, MessageResponse, MessageCounts, Peer, PeerState, PeerSummary, Route,
-    RouteState,
+    Community, CommunityList, HoldTimer, MessageCounts, MessageResponse, Peer, PeerState,
+    PeerSummary, Route, RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
-pub type SessionTx = mpsc::UnboundedSender<SessionMessage>;
-pub type SessionRx = mpsc::UnboundedReceiver<SessionMessage>;
+pub type SessionTx = mpsc::UnboundedSender<Vec<Route>>;
+pub type SessionRx = mpsc::UnboundedReceiver<Vec<Route>>;
 
 pub enum SessionMessage {
-    LearnedRoute(Route),
+    LearnedRoutes(Route),
     AdvertisedRoute(Route),
 }
-
 
 pub struct Session {
     peer: Box<Peer>,
     protocol: MessageProtocol,
-    rx: SessionRx,
+    tx: SessionTx,
     connect_time: DateTime<Utc>,
     hold_timer: HoldTimer,
     counts: MessageCounts,
 }
 
 impl Session {
-    pub fn new(peer: Peer, protocol: MessageProtocol, rx: SessionRx) -> Session {
+    pub fn new(peer: Peer, protocol: MessageProtocol, tx: SessionTx) -> Session {
         let hold_timer = peer.hold_timer;
         Session {
             peer: Box::new(peer),
             protocol,
-            rx,
+            tx,
             connect_time: Utc::now(),
             hold_timer: HoldTimer::new(hold_timer),
             counts: MessageCounts::new(),
@@ -98,7 +96,7 @@ impl fmt::Display for Session {
 
 /// This is where a connected peer is managed.
 ///
-/// A `Session` is also a future for processing BGP messages and
+/// A `Session` is also a stream for processing BGP messages and
 /// handling peer timeouts
 ///
 /// When a `Session` is created, the first OPEN message has already been read.
@@ -117,38 +115,35 @@ impl Future for Session {
             if let Some(message) = data {
                 trace!("[{}] Incoming: {:?}", self.peer.addr, message);
                 self.counts.increment_received();
-                self.peer
-                    .process_message(message)
-                    .and_then(|resp| {
-                        match resp {
-                            MessageResponse::Open((open, caps, hold_timer)) => {
-                                self.peer.update_state(PeerState::OpenConfirm);
-                                self.protocol.codec_mut().set_capabilities(caps);
-                                self.hold_timer = HoldTimer::new(hold_timer);
-                                self.send_message(Message::Open(open))
-                                    .map_err(|e| SessionError {
-                                        reason: e.to_string(),
-                                        peer: Some(self.reset_peer()),
-                                    })
-                                    .ok();
-                                self.peer.update_state(PeerState::Established);
-                            },
-                            MessageResponse::Message(message) => {
-                                self.send_message(message)?;
-                            },
-                            MessageResponse::LearnedRoutes(routes) => {
-                                // return Async
-                                ()
-                            },
-                            _ => (),
-                        }
-                        Ok(())
-                    })
-                    .map_err(|e| SessionError {
-                        reason: e.to_string(),
-                        peer: Some(self.reset_peer()),
-                    })
-                    .ok();
+                let resp = self.peer.process_message(message)?;
+                match resp {
+                    MessageResponse::Open((open, caps, hold_timer)) => {
+                        self.peer.update_state(PeerState::OpenConfirm);
+                        self.protocol.codec_mut().set_capabilities(caps);
+                        self.hold_timer = HoldTimer::new(hold_timer);
+                        self.send_message(Message::Open(open))
+                            .map_err(|e| SessionError {
+                                reason: e.to_string(),
+                                peer: Some(self.reset_peer()),
+                            })
+                            .ok();
+                        self.peer.update_state(PeerState::Established);
+                    }
+                    MessageResponse::Message(message) => {
+                        self.send_message(message)?;
+                    }
+                    MessageResponse::LearnedRoutes(routes) => {
+                        self.tx.unbounded_send(routes).unwrap();
+                        // return Ok(Async::Ready(routes));
+                        ()
+                    }
+                    _ => (),
+                }
+                // .map_err(|e| SessionError {
+                //     reason: e.to_string(),
+                //     peer: Some(self.reset_peer()),
+                // })
+                // .ok();
                 self.hold_timer.received_update();
             } else {
                 // Before the Session is dropped, send peer back to idle peers
