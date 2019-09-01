@@ -4,12 +4,14 @@ output_dir = "./"
 
 [[peers]]
 remote_ip = "127.0.0.2"
+dest_port = 1179
 remote_as = 65000
 local_as = 65000
 router_id = "127.0.0.1"     # Can override local Router ID for this peer
 
 [[peers]]
 remote_ip = "127.0.0.3"
+dest_port = 1179
 remote_as = 65000
 local_as = 65000
 passive = true              # If passive, bgpd won't attempt outbound connections 
@@ -17,6 +19,7 @@ hold_timer = 30
 
 [[peers]]
 remote_ip = "::2"
+dest_port = 1179
 remote_as = 65000
 local_as = 65000
 passive = true

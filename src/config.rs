@@ -17,6 +17,10 @@ impl Defaults {
     fn hold_timer() -> u16 {
         180
     }
+    
+    fn dest_port() -> u16 {
+        179
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +39,11 @@ pub struct PeerConfig {
     // Will send keepalives every 1/3rd of this value
     #[serde(default = "Defaults::hold_timer")]
     pub hold_timer: u16,
+    
+    // Destination port for BGP session
+    // Used when initiating connection to peer
+    #[serde(default = "Defaults::dest_port")]
+    pub dest_port: u16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,6 +83,7 @@ mod tests {
             .unwrap();
         assert_eq!(peer.local_as, Some(65000));
         assert_eq!(peer.hold_timer, 180);
+        assert_eq!(peer.hold_timer, 1179);
         assert!(!peer.passive);
     }
 }
