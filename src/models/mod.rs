@@ -8,6 +8,6 @@ mod route;
 pub use community::{Community, CommunityList};
 pub use hold_timer::HoldTimer;
 pub use message_counts::MessageCounts;
-pub use peer::{Peer, PeerIdentifier, PeerState, MessageResponse};
+pub use peer::{MessageResponse, Peer, PeerIdentifier, PeerState};
 pub use peer_summary::PeerSummary;
 pub use route::{Route, RouteState};

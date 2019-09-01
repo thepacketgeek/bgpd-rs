@@ -12,10 +12,10 @@ use chrono::Utc;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
+use crate::api::PeerSummary;
 use crate::codec::capabilities_from_params;
 use crate::models::{Community, CommunityList, Route, RouteState};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
-use crate::api::PeerSummary;
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub enum PeerState {

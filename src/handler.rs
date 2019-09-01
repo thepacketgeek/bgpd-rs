@@ -147,7 +147,21 @@ impl Future for Server {
                     }
                 }
 
-                // self.inner.advertised_routes.lock().unwrap().iter().filter(|r| r.peer == session.peer.).map(|route| session.advertised_route(route));
+                if let Ok(mut routes) = self.inner.pending_routes.lock() {
+                    if let Some(router_id) = session.peer.remote_id.router_id {
+                        let mut pending: Vec<Route> = vec![];
+                        // Until vec.drain_filter() hits stable...
+                        let mut i = 0;
+                        while i != routes.len() {
+                            if routes[i].peer == router_id {
+                                pending.push(routes.remove(i));
+                            } else {
+                                i += 1;
+                            }
+                        }
+                        session.add_pending_routes(pending);
+                    }
+                }
             }
         }
 
