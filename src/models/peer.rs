@@ -12,6 +12,7 @@ use chrono::Utc;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
+use crate::MessageResponse;
 use crate::codec::capabilities_from_params;
 use crate::models::{Community, CommunityList, Route, RouteState};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
@@ -78,14 +79,6 @@ impl fmt::Display for PeerIdentifier {
             asn_to_dotted(self.asn)
         )
     }
-}
-
-#[derive(Debug)]
-pub enum MessageResponse {
-    Open((Open, Capabilities, u16)),
-    Message(Message),
-    LearnedRoutes(Vec<Route>),
-    Empty,
 }
 
 #[derive(Debug)]

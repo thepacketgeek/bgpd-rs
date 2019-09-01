@@ -1,4 +1,3 @@
-use std::convert::From;
 use std::fmt;
 use std::io::Error;
 
@@ -9,9 +8,10 @@ use futures::{Async, Poll, Stream};
 use log::trace;
 use tokio::prelude::*;
 
+use super::{MessageResponse, SessionError};
 use crate::codec::MessageProtocol;
 use crate::models::{
-    HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, PendingRoutes, Route, RouteState,
+    HoldTimer, MessageCounts, Peer, PeerState, PendingRoutes, Route, RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
@@ -172,21 +172,3 @@ impl Future for Session {
     }
 }
 
-#[derive(Debug)]
-pub struct SessionError {
-    pub reason: String,
-}
-
-impl fmt::Display for SessionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Session Error: {}", self.reason)
-    }
-}
-
-impl From<Error> for SessionError {
-    fn from(error: Error) -> Self {
-        SessionError {
-            reason: error.to_string(),
-        }
-    }
-}

@@ -39,7 +39,7 @@ impl_web! {
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
             })?;
             self.0.sessions.lock().map(|sessions| {
-                output.extend(sessions.iter().map(|(_, (s, _))| s.into()).collect::<Vec<_>>());
+                output.extend(sessions.iter().map(|(_, s)| s.into()).collect::<Vec<_>>());
             }).map_err(|err| {
                 error!("Error fetching sessions: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
