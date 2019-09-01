@@ -1,7 +1,6 @@
 mod api;
 mod codec;
 mod config;
-mod db;
 mod handler;
 mod models;
 mod session;

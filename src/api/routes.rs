@@ -1,11 +1,11 @@
 use std::net::IpAddr;
 
-use bgp_rs::{ASPath, Origin, Segment};
+use bgp_rs::Segment;
 use serde::Serialize;
 use tower_web::Response;
 
 use crate::models::{Route, RouteState};
-use crate::utils::{format_time_as_elapsed, prefix_from_string};
+use crate::utils::format_time_as_elapsed;
 
 #[derive(Serialize)]
 pub struct LearnedRoute {

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::codec::{MessageCodec, MessageProtocol};
-use super::models::{Peer, PeerIdentifier, PeerState, PeerSummary};
+use super::models::{Peer, PeerIdentifier, PeerState};
 use bgp_rs::Message;
 use futures::future::{self, Either, Future};
 use futures::sync::mpsc;
@@ -13,13 +13,8 @@ use futures::{Async, Poll, Stream};
 use log::{debug, error, info, trace, warn};
 use net2::TcpBuilder;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
-use tokio::reactor::Handle;
-use tokio::runtime::Runtime;
-use tokio::timer::Interval;
 
 use crate::config::ServerConfig;
-// use crate::db::DB;
 use crate::models::Route;
 use crate::session::{Session, SessionRoutes, SessionRx};
 

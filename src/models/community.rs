@@ -1,8 +1,6 @@
 use std::fmt;
 use std::slice::Iter;
 
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
-use rusqlite::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::utils::{asn_to_dotted, ext_community_to_display};
@@ -46,58 +44,5 @@ impl fmt::Display for CommunityList {
             .collect::<Vec<String>>()
             .join(" ");
         write!(f, "{}", communities)
-    }
-}
-
-impl Community {
-    fn parse_from_sql(value: &str) -> std::result::Result<Community, FromSqlError> {
-        let rerr = |err| FromSqlError::Other(Box::new(err));
-        match &value[..1] {
-            "s" => {
-                let community = value[1..].parse::<u32>().map_err(rerr)?;
-                Ok(Community::STANDARD(community))
-            }
-            "e" => {
-                let community = value[1..].parse::<u64>().map_err(rerr)?;
-                Ok(Community::EXTENDED(community))
-            }
-            _ => Err(FromSqlError::InvalidType),
-        }
-    }
-}
-
-/// Encode a CommunityList for SQL Storage
-/// Will prepend initial for Community Type (for decoding back to struct)
-/// E.g.
-///     s65000;e8008fde800000064
-impl ToSql for CommunityList {
-    fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
-        let result = self
-            .0
-            .iter()
-            .map(|community| match community {
-                Community::STANDARD(community) => format!("s{}", community.to_string()),
-                Community::EXTENDED(community) => format!("e{}", community.to_string()),
-            })
-            .collect::<Vec<String>>()
-            .join(";");
-        Ok(ToSqlOutput::from(result))
-    }
-}
-
-/// Decode SQL back to CommunityList
-/// See `impl ToSql for CommunityList` for details
-impl FromSql for CommunityList {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        value.as_str().and_then(|communities| {
-            if communities.is_empty() {
-                return Ok(CommunityList(vec![]));
-            }
-            let mut parsed: Vec<Community> = Vec::new();
-            for community in communities.split(';') {
-                parsed.push(Community::parse_from_sql(community)?);
-            }
-            Ok(CommunityList(parsed))
-        })
     }
 }

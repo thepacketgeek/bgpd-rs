@@ -251,6 +251,7 @@ impl Peer {
                 } else {
                     MessageResponse::Empty
                 }
+                // TODO
                 // if update.is_withdrawal() {
                 //     let withdrawn_routes = process_routes(router_id, update, update.withdrawn_routes);
                 // }
@@ -260,10 +261,6 @@ impl Peer {
                 MessageResponse::Empty
             }
             Message::RouteRefresh(_) => MessageResponse::Empty,
-            _ => {
-                warn!("{} Unexpected message {:?}", self.remote_id, message);
-                return Err(Error::from(ErrorKind::InvalidInput));
-            }
         };
         Ok(response)
     }

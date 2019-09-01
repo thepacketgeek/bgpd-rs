@@ -1,18 +1,17 @@
 use std::fmt;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 
-use bgp_rs::{Identifier, Message, NLRIEncoding, PathAttribute};
+use bgp_rs::Message;
 use chrono::{DateTime, Duration, Utc};
 use futures::sync::mpsc;
 use futures::{Async, Poll, Stream};
-use log::{error, trace, warn};
+use log::trace;
 use tokio::prelude::*;
 
 use crate::api::PeerSummary;
 use crate::codec::MessageProtocol;
 use crate::models::{
-    Community, CommunityList, HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, Route,
-    RouteState,
+    HoldTimer, MessageCounts, MessageResponse, Peer, PeerState, Route, RouteState,
 };
 use crate::utils::format_time_as_elapsed;
 
