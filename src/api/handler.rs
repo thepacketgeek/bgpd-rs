@@ -32,14 +32,14 @@ impl_web! {
         #[content_type("json")]
         fn show_neighbors(&self) -> Result<PeerSummaries, Error> {
             let mut output: Vec<PeerSummary> = vec![];
-            self.0.idle_peers.lock().map(|peers| {
-                output.extend(peers.iter().map(|(_, p)| p.into()).collect::<Vec<_>>());
+            self.0.idle_peers.lock().map(|idle_peers| {
+                output.extend(idle_peers.peers().iter().map(|&p| p.into()).collect::<Vec<_>>());
             }).map_err(|err| {
                 error!("Error fetching peers: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)
             })?;
             self.0.sessions.lock().map(|sessions| {
-                output.extend(sessions.iter().map(|(_, s)| s.into()).collect::<Vec<_>>());
+                output.extend(sessions.values().map(|s| s.into()).collect::<Vec<_>>());
             }).map_err(|err| {
                 error!("Error fetching sessions: {}", err);
                 Error::from(StatusCode::INTERNAL_SERVER_ERROR)

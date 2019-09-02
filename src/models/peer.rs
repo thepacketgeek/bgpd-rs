@@ -89,6 +89,7 @@ pub struct Peer {
     state: PeerState,
     passive: bool,
     pub hold_timer: u16,
+    pub dest_port: u16,
 }
 
 impl Peer {
@@ -99,6 +100,7 @@ impl Peer {
         local_id: PeerIdentifier,
         passive: bool,
         hold_timer: u16,
+        dest_port: u16,
     ) -> Peer {
         Peer {
             addr,
@@ -107,6 +109,7 @@ impl Peer {
             local_id,
             passive,
             hold_timer,
+            dest_port,
         }
     }
 
@@ -254,6 +257,7 @@ impl Default for Peer {
             PeerIdentifier::new(Some(ip), 0),
             false,
             0,
+            179,
         )
     }
 }

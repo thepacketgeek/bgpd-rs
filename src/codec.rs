@@ -17,7 +17,7 @@ use crate::utils::*;
 
 pub type MessageProtocol = Framed<TcpStream, MessageCodec>;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct MessageCodec {
     pub capabilities: Capabilities,
 }

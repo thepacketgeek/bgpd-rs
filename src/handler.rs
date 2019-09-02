@@ -2,23 +2,19 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use super::codec::{MessageCodec, MessageProtocol};
 use super::models::{Peer, PeerIdentifier, PeerState};
-use bgp_rs::Message;
-use futures::future::{self, Either, Future};
+use futures::future::Future;
 use futures::sync::mpsc;
 use futures::{Async, Poll, Stream};
-use log::{debug, error, info, trace, warn};
-use net2::TcpBuilder;
-use tokio::net::{TcpListener, TcpStream};
+use log::{debug, error, trace, warn};
+use tokio::net::TcpListener;
 
 use crate::config::ServerConfig;
 use crate::models::Route;
+use crate::poller::Poller;
 use crate::session::{Session, SessionRoutes, SessionRx, SessionTx};
-
-type Peers = HashMap<IpAddr, Peer>;
 
 pub struct Server {
     inner: Arc<State>,
@@ -28,7 +24,7 @@ pub struct Server {
 }
 
 pub struct State {
-    pub(crate) idle_peers: Arc<Mutex<Peers>>,
+    pub(crate) idle_peers: Arc<Mutex<Poller>>,
     pub(crate) sessions: Arc<Mutex<HashMap<IpAddr, Session>>>,
     pub(crate) learned_routes: Arc<Mutex<Vec<Route>>>,
     pub(crate) pending_routes: Arc<Mutex<Vec<Route>>>,
@@ -37,32 +33,29 @@ pub struct State {
 
 impl Server {
     pub fn from_config(socket: SocketAddr, config: ServerConfig) -> Result<Self, Error> {
-        // Peers are owned by a session when it begins and
-        // returned to idle_peers when the session drops
-        let idle_peers: Peers = config
-            .peers
-            .iter()
-            .map(|p| {
-                let peer = Peer::new(
-                    p.remote_ip,
-                    PeerState::Idle,
-                    PeerIdentifier::new(None, p.remote_as), // remote
-                    PeerIdentifier::new(
-                        Some(p.router_id.unwrap_or(config.router_id)),
-                        p.local_as.unwrap_or(config.default_as),
-                    ), // local
-                    p.passive,
-                    p.hold_timer,
-                );
-                (peer.addr, peer)
-            })
-            .collect();
-
+        // Peers are taken by a session when it begins and
+        // returned to Poller when the session drops
+        let mut poller = Poller::new(15);
+        for peer_config in config.peers.iter() {
+            let peer = Peer::new(
+                peer_config.remote_ip,
+                PeerState::Idle,
+                PeerIdentifier::new(None, peer_config.remote_as), // remote
+                PeerIdentifier::new(
+                    Some(peer_config.router_id.unwrap_or(config.router_id)),
+                    peer_config.local_as.unwrap_or(config.default_as),
+                ), // local
+                peer_config.passive,
+                peer_config.hold_timer,
+                peer_config.dest_port,
+            );
+            poller.add_peer(peer);
+        }
         let (tx, rx) = mpsc::unbounded();
 
         Ok(Self {
             inner: Arc::new(State {
-                idle_peers: Arc::new(Mutex::new(idle_peers)),
+                idle_peers: Arc::new(Mutex::new(poller)),
                 sessions: Arc::new(Mutex::new(HashMap::new())),
                 learned_routes: Arc::new(Mutex::new(Vec::new())),
                 advertised_routes: Arc::new(Mutex::new(Vec::new())),
@@ -87,7 +80,13 @@ impl Future for Server {
         // Process all pending incoming connections
         while let Ok(Async::Ready((stream, socket))) = self.tcp_listener.poll_accept() {
             debug!("Incoming new connection from {}", socket.ip());
-            if let Some(peer) = self.inner.idle_peers.lock().unwrap().remove(&socket.ip()) {
+            if let Some(peer) = self
+                .inner
+                .idle_peers
+                .lock()
+                .unwrap()
+                .connect_peer(&socket.ip())
+            {
                 let protocol = MessageProtocol::new(stream, MessageCodec::new());
                 let new_session = Session::new(peer, protocol, self.tx.clone());
                 if let Ok(mut sessions) = self.inner.sessions.lock() {
@@ -96,6 +95,13 @@ impl Future for Server {
             } else {
                 warn!("Unexpected connection from {}", socket.ip());
             }
+        }
+
+        while let Ok(Async::Ready(Some(remote_addr))) = self.inner.idle_peers.lock().unwrap().poll() {
+            trace!(
+                "Attempting connection to peer: {}",
+                remote_addr,
+            );
         }
 
         let mut ended_sessions: Vec<IpAddr> = vec![];
@@ -132,7 +138,7 @@ impl Future for Server {
                             learned_routes.retain(|r| r.peer != peer.remote_id.router_id.unwrap());
                         }
                         peer.revert_to_idle();
-                        peers.insert(peer.addr, peer);
+                        peers.add_peer(peer);
                     }
                 }
             }

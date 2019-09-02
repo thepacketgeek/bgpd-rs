@@ -1,85 +1,102 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::io::Error;
-use std::net::TcpStream;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use futures::{Async, Poll};
 use tokio::prelude::*;
+use tokio::timer::Interval;
 
-use crate::MessageProtocol;
 use crate::models::Peer;
-use crate::utils::{format_elapsed_time, get_elapsed_time};
 
+type Peers = HashMap<IpAddr, IdlePeer>;
 
-struct PeerStatus {
+/// Signal to the Poller when an Idle Peer is ready to attempt connection to
+pub struct IdlePeer {
     peer: Peer,
     last_connect_attempt: Instant,
+    interval: Duration,
 }
 
-impl PeerStatus {
-    fn new(peer: Peer) -> Self {
-        PeerStatus {peer, last_connect_attempt: Instant::now()}
-    }
-
-    pub fn should_init_connection(&self, interval: Duration) -> bool {
-        self.last_connect_attempt.elapsed() > interval
-    }
-}
-
-impl Future for PeerStatus {
-    type Item = IpAddr;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Error> {
-        if !self.peer.is_passive() && self.should_init_connection() {
-            Ok(Async::Ready(self.peer.addr)
-        } else {
-            Ok(Async::NotReady)
+impl IdlePeer {
+    pub fn new(peer: Peer, interval: Duration) -> Self {
+        IdlePeer {
+            peer,
+            last_connect_attempt: Instant::now(),
+            interval,
         }
     }
+
+    /// Consumes self and returns Peer
+    pub fn connecting(self) -> Peer {
+        self.peer
+    }
+
+    pub fn should_init_connection(&self) -> bool {
+        !self.peer.is_passive()
+            && self.last_connect_attempt.elapsed().as_secs() > self.interval.as_secs()
+    }
 }
 
-pub struct SessionStarter {
+/// Stores Idle peers and checks every interval if there are peers that the Handler
+/// can attempt to connect to
+pub struct Poller {
     interval: Duration,
-    peers: Vec<PeerStatus>,
-    socket: TcpStream,
+    timer: Interval,
+    idle_peers: Peers,
 }
 
-impl SessionStarter {
-    pub fn new(socket: TcpStream, interval: u32 /* seconds */) -> Self {
+impl Poller {
+    pub fn new(interval: u32 /* seconds */) -> Self {
         Self {
-            interval: Duration::from_secs(interval),
-            peers: vec![],
-            socket,
+            interval: Duration::from_secs(interval.into()),
+            timer: Interval::new(Instant::now(), Duration::from_secs(2)),
+            idle_peers: HashMap::new(),
         }
     }
 
     pub fn add_peer(&mut self, peer: Peer) {
-        self.peers.push(PeerStatus::new(peer));
+        self.idle_peers
+            .insert(peer.addr, IdlePeer::new(peer, self.interval));
     }
-}
 
-impl Future for SessionStarter {
-    type Item = MessageProtocol;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Error> {
-        for peer_state in self.peers {
-            if let Ok(Async::Ready(addr)) = peer_state.poll() {
-                let socket = self.builder.
-                TcpStream::connect_std(
-                    socket,
-                    &SocketAddr::new(addr, peer_state.peer.dest_port),
-                    &Handle::default(),
-                )
-                .timeout(Duration::from_secs(2))
-            }
+    pub fn connect_peer(&mut self, addr: &IpAddr) -> Option<Peer> {
+        if let Some(idle_peer) = self.idle_peers.remove(&addr) {
+            Some(idle_peer.connecting())
+        } else {
+            None
         }
     }
+
+    pub fn peers(&self) -> Vec<&Peer> {
+        self.idle_peers.values().map(|p| &p.peer).collect()
+    }
 }
 
-impl fmt::Display for HoldTimer {
+impl Stream for Poller {
+    type Item = SocketAddr;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Error> {
+        while let Ok(Async::Ready(_)) = self.timer.poll() {
+            for idle in self
+                .idle_peers
+                .values_mut()
+                .filter(|p| p.should_init_connection())
+            {
+                idle.last_connect_attempt = Instant::now();
+                return Ok(Async::Ready(Some(
+                    (idle.peer.addr, idle.peer.dest_port).into(),
+                )));
+            }
+        }
+        Ok(Async::NotReady)
+    }
+}
+
+impl fmt::Display for Poller {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", format_elapsed_time(self.get_hold_time()))
+        write!(f, "<Poller peers={}>", self.idle_peers.len())
     }
 }
