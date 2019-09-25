@@ -206,17 +206,17 @@ fn encode_update(update: Update) -> Vec<u8> {
     bytes.extend_from_slice(&[2]); // type, Update
 
     // withdrawn_routes
-    bytes.extend_from_slice(&transform_u16_to_bytes(update.withdrawn_routes.len() as u16)); // length
-                                                                                            // TODO: Withdrawn routes
-                                                                                            // if update.withdrawn_routes.len() > 0 {
-                                                                                            // let withdrawn_routes: Vec<u8> = update
-                                                                                            //     .withdrawn_routes
-                                                                                            //     .iter()
-                                                                                            //     .map(|r| encode_withdrawl(&r))
-                                                                                            //     .flatten()
-                                                                                            //     .collect();
-                                                                                            // bytes.extend_from_slice(&withdrawn_routes);
-                                                                                            // }
+    bytes.extend_from_slice(&transform_u16_to_bytes(update.withdrawn_routes.len() as u16)); /* length */
+    // TODO: Withdrawn routes
+    // if update.withdrawn_routes.len() > 0 {
+    // let withdrawn_routes: Vec<u8> = update
+    //     .withdrawn_routes
+    //     .iter()
+    //     .map(|r| encode_withdrawl(&r))
+    //     .flatten()
+    //     .collect();
+    // bytes.extend_from_slice(&withdrawn_routes);
+    // }
 
     // Path Attributes
     let attributes: Vec<u8> = update

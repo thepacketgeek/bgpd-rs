@@ -5,10 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use super::codec::{MessageCodec, MessageProtocol};
 use super::models::{Peer, PeerIdentifier, PeerState};
-use futures::future::Future;
-use futures::sync::mpsc;
-use futures::{Async, Poll, Stream};
-use log::{debug, error, trace, warn};
+use futures::{future::Future, sync::mpsc, Async, Poll, Stream};
+use log::{debug, error, warn};
 use tokio::net::TcpListener;
 
 use crate::config::ServerConfig;
@@ -95,13 +93,6 @@ impl Future for Server {
             } else {
                 warn!("Unexpected connection from {}", socket.ip());
             }
-        }
-
-        while let Ok(Async::Ready(Some(remote_addr))) = self.inner.idle_peers.lock().unwrap().poll() {
-            trace!(
-                "Attempting connection to peer: {}",
-                remote_addr,
-            );
         }
 
         let mut ended_sessions: Vec<IpAddr> = vec![];

@@ -11,14 +11,14 @@ Totally just a POC, mostly for my own amusement
 - [x] Listen for Incoming BGP sessions 
 - [x] Parse OPEN, save capabilities
 - [x] Send OPEN with capabilities 
-- [x] Receive and respond to Keepalives
-- [x] Attempt connection to unestablished peers
+- [x] Receive and respond to Keepalives (on hold time based interval)
 - [x] Process UPDATE messages, parsing with capabilities
-- [x] Store received routes locally
+- [x] Store received routes
 - [x] CLI interface for viewing peer status, routes, etc.
 - [x] Advertise routes to peers (specified from API)
 - [x] API/CLI interface for interacting with BGPd
-- [ ] Route Policy for advertisement of learned routes
+- [ ] Initiate outbound TCP connection to idle peers
+- [ ] Route Policy for advertisement of learned routes (a.k.a Route Reflector)?
 
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
