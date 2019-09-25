@@ -80,10 +80,11 @@ impl Stream for Poller {
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Error> {
         while let Ok(Async::Ready(_)) = self.timer.poll() {
-            for idle in self
+            if let Some(idle) = self
                 .idle_peers
                 .values_mut()
                 .filter(|p| p.should_init_connection())
+                .next()
             {
                 idle.last_connect_attempt = Instant::now();
                 return Ok(Async::Ready(Some(

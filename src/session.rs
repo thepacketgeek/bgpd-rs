@@ -10,9 +10,7 @@ use tokio::prelude::*;
 
 use super::{MessageResponse, SessionError};
 use crate::codec::MessageProtocol;
-use crate::models::{
-    HoldTimer, MessageCounts, Peer, PeerState, PendingRoutes, Route, RouteState,
-};
+use crate::models::{HoldTimer, MessageCounts, Peer, PeerState, PendingRoutes, Route, RouteState};
 use crate::utils::format_time_as_elapsed;
 
 pub type SessionTx = mpsc::UnboundedSender<SessionRoutes>;
@@ -124,9 +122,6 @@ impl Future for Session {
                         self.tx
                             .unbounded_send(SessionRoutes::Learned(routes))
                             .unwrap();
-                        // TODO: Make this a stream instead of using a channel?
-                        // return Ok(Async::Ready(routes));
-                        ()
                     }
                     _ => (),
                 }
@@ -171,4 +166,3 @@ impl Future for Session {
         Ok(Async::NotReady)
     }
 }
-

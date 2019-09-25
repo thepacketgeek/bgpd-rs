@@ -12,10 +12,10 @@ use chrono::Utc;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
-use crate::MessageResponse;
 use crate::codec::capabilities_from_params;
 use crate::models::{Community, CommunityList, Route, RouteState};
 use crate::utils::{as_u32_be, asn_to_dotted, transform_u32_to_bytes};
+use crate::MessageResponse;
 
 #[derive(Debug, Copy, Clone, Deserialize, Serialize)]
 pub enum PeerState {
@@ -274,7 +274,7 @@ impl fmt::Display for Peer {
     }
 }
 
-fn process_routes(router_id: IpAddr, update: &Update, routes: &Vec<NLRIEncoding>) -> Vec<Route> {
+fn process_routes(router_id: IpAddr, update: &Update, routes: &[NLRIEncoding]) -> Vec<Route> {
     let origin = update
         .get(Identifier::ORIGIN)
         .map(|attr| {
