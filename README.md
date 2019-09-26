@@ -1,6 +1,7 @@
 # BGPd-rs
 
 BGP service daemon built in Rust
+[![Actions Status](https://github.com/thepacketgeek/bgpd-rs/workflows/cargo/badge.svg)](https://github.com/thepacketgeek/bgpd-rs/actions)
 
 Totally just a POC, mostly for my own amusement
 
