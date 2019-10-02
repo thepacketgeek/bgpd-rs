@@ -21,6 +21,11 @@ Totally just a POC, mostly for my own amusement
 - [ ] Initiate outbound TCP connection to idle peers
 - [ ] Route Policy for advertisement of learned routes (a.k.a Route Reflector)?
 
+## Thanks to
+- [bgp-rs](https://github.com/DevQps/bgp-rs) for the BGP Message Parsing
+- [tokio](https://tokio.rs/) for the Runtime
+- [tower](https://github.com/carllerche/tower-web) for the HTTP API
+
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
 

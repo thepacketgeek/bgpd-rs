@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 
 [dependencies]
+# Waiting for PR to merge with https://github.com/DevQps/bgp-rs
 bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs", branch = "message-attrs" }
 bytes = "0.4.12"
 byteorder = "1.3.1"
