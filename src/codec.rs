@@ -39,7 +39,7 @@ impl MessageCodec {
     {
         Reader::<T> {
             stream,
-            capabilities: self.capabilities,
+            capabilities: self.capabilities.clone(),
         }
     }
 }
@@ -255,9 +255,6 @@ pub fn capabilities_from_params(parameters: &[OpenParameter]) -> (Capabilities, 
             65 => {
                 asn_4_byte = (&param.value[2..6]).read_u32::<NetworkEndian>().ok();
                 capabilities.FOUR_OCTET_ASN_SUPPORT = true;
-            }
-            69 => {
-                capabilities.EXTENDED_PATH_NLRI_SUPPORT = true;
             }
             _ => {}
         }
