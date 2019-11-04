@@ -1,47 +1,11 @@
-use std::convert::From;
-use std::fmt;
-use std::io::Error;
+#![recursion_limit = "384"]
+// Used for the select! macros
+#![feature(async_closure)]
+#![feature(drain_filter)]
 
-use bgp_rs::{Capabilities, Message, Open};
-
-mod api;
-mod codec;
-mod config;
-mod handler;
-mod models;
-mod poller;
-mod session;
-mod utils;
-
-pub use api::API;
-pub use config::ServerConfig;
-pub use handler::Server;
-
-use models::Route;
-
-#[derive(Debug)]
-pub enum MessageResponse {
-    Open((Open, Capabilities, u16)),
-    Message(Message),
-    LearnedRoutes(Vec<Route>),
-    Empty,
-}
-
-#[derive(Debug)]
-pub struct SessionError {
-    pub reason: String,
-}
-
-impl fmt::Display for SessionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Session Error: {}", self.reason)
-    }
-}
-
-impl From<Error> for SessionError {
-    fn from(error: Error) -> Self {
-        SessionError {
-            reason: error.to_string(),
-        }
-    }
-}
+pub mod api;
+pub mod config;
+pub mod handler;
+pub mod rib;
+pub mod session;
+pub mod utils;

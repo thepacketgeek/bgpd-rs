@@ -1,10 +1,11 @@
+use std::error::Error;
 use std::marker::PhantomData;
 
 use prettytable::{format, Row, Table};
 
 pub trait ToRow {
     fn columns() -> Row;
-    fn to_row(&self) -> Result<Row, String>;
+    fn to_row(&self) -> Result<Row, Box<dyn Error>>;
 }
 
 pub struct OutputTable<T: ToRow> {
@@ -37,10 +38,8 @@ where
         }
     }
 
-    pub fn add_row(&mut self, row: &T) -> Result<(), String> {
-        row.to_row()
-            .map(|row| self.inner.add_row(row))
-            .map_err(|err| err.to_string())?;
+    pub fn add_row(&mut self, row: &T) -> Result<(), Box<dyn Error>> {
+        row.to_row().map(|row| self.inner.add_row(row))?;
         Ok(())
     }
 

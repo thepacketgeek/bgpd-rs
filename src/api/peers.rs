@@ -1,57 +1,87 @@
-use std::convert::From;
-use std::net::IpAddr;
+use std::sync::Arc;
 
-use serde::Serialize;
-use tower_web::Response;
+use bgp_rs::Capabilities;
+use bgpd_rpc_lib::{PeerDetail, PeerSummary};
 
-use crate::models::Peer;
-use crate::session::Session;
+use crate::config::PeerConfig;
+use crate::session::{Session, SessionState};
 use crate::utils::format_time_as_elapsed;
 
-#[derive(Debug, Serialize)]
-pub struct PeerSummary {
-    pub peer: IpAddr,
-    pub router_id: Option<IpAddr>,
-    pub asn: u32,
-    pub msg_received: Option<u64>,
-    pub msg_sent: Option<u64>,
-    pub connect_time: Option<i64>,
-    pub uptime: Option<String>,
-    pub state: String,
-    pub prefixes_received: Option<u64>,
-}
-
-#[derive(Debug, Response)]
-pub struct PeerSummaries(pub Vec<PeerSummary>);
-
-impl From<&Peer> for PeerSummary {
-    fn from(peer: &Peer) -> PeerSummary {
-        PeerSummary {
-            peer: peer.addr,
-            router_id: peer.remote_id.router_id,
-            asn: peer.remote_id.asn,
-            msg_received: None,
-            msg_sent: None,
-            connect_time: None,
-            uptime: None,
-            state: peer.get_state().to_string(),
-            prefixes_received: None,
-        }
+pub fn peer_to_summary(
+    config: Arc<PeerConfig>,
+    session: Option<&Session>,
+    prefixes_received: Option<u64>,
+) -> PeerSummary {
+    PeerSummary {
+        peer: session.map(|s| s.addr).unwrap_or(config.remote_ip),
+        enabled: config.enabled,
+        router_id: session.map(|s| s.router_id),
+        remote_asn: config.remote_as,
+        local_asn: config.local_as,
+        msg_received: session.map(|s| s.counts.received()),
+        msg_sent: session.map(|s| s.counts.sent()),
+        connect_time: session.map(|s| s.connect_time.timestamp()),
+        uptime: session.map(|s| format_time_as_elapsed(s.connect_time)),
+        state: session.map(|s| s.state.to_string()).unwrap_or_else(|| {
+            if !config.enabled {
+                "Disabled".to_string()
+            } else if !config.passive {
+                SessionState::Active.to_string()
+            } else {
+                SessionState::Idle.to_string()
+            }
+        }),
+        prefixes_received,
     }
 }
 
-impl From<&Session> for PeerSummary {
-    fn from(session: &Session) -> PeerSummary {
-        PeerSummary {
-            peer: session.peer.addr,
-            router_id: session.peer.remote_id.router_id,
-            asn: session.peer.remote_id.asn,
-            msg_received: Some(session.counts.received()),
-            msg_sent: Some(session.counts.sent()),
-            connect_time: Some(session.connect_time.timestamp()),
-            uptime: Some(format_time_as_elapsed(session.connect_time)),
-            state: session.peer.get_state().to_string(),
-            prefixes_received: None,
-        }
+pub fn peer_to_detail(
+    config: Arc<PeerConfig>,
+    session: Option<&Session>,
+    prefixes_received: Option<u64>,
+) -> PeerDetail {
+    let capabilities = session
+        .map(|s| capabilities_export(&s.capabilities))
+        .unwrap_or_else(|| config.families.iter().map(|f| f.to_string()).collect());
+    PeerDetail {
+        summary: peer_to_summary(config.clone(), session, prefixes_received),
+        capabilities: capabilities,
+        hold_timer: session
+            .map(|s| s.hold_timer.hold_timer)
+            .unwrap_or(config.hold_timer),
+        hold_timer_interval: session
+            .map(|s| s.hold_timer.interval)
+            .unwrap_or(config.hold_timer / 3),
+        hold_time: session.map(|s| s.hold_timer.to_string()),
+        last_received: session.map(|s| format_time_as_elapsed(s.hold_timer.last_received)),
+        last_sent: session.map(|s| format_time_as_elapsed(s.hold_timer.last_sent)),
+        tcp_connection: session.map(|s| {
+            let socket = s.protocol.get_ref();
+            (
+                socket
+                    .local_addr()
+                    .expect("Stream has local address")
+                    .to_string(),
+                socket
+                    .peer_addr()
+                    .expect("Stream has remote address")
+                    .to_string(),
+            )
+        }),
     }
+}
+
+fn capabilities_export(capabilities: &Capabilities) -> Vec<String> {
+    let mut caps: Vec<String> = vec![];
+    for fam in &capabilities.MP_BGP_SUPPORT {
+        caps.push(format!(
+            "Address family {} {}",
+            fam.0.to_string(),
+            fam.1.to_string()
+        ))
+    }
+    if capabilities.ROUTE_REFRESH_SUPPORT {
+        caps.push("Route Refresh".to_string());
+    }
+    caps
 }

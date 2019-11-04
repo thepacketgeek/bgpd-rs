@@ -1,14 +1,17 @@
-use std::io::Result;
+use std::error::Error;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 
 use env_logger::Builder;
-use futures::future::Future;
-use log::{debug, info, LevelFilter};
+use log::{debug, error, info, trace, LevelFilter};
+use signal_hook::{iterator::Signals, SIGHUP};
 use structopt::StructOpt;
-use tokio::runtime::Runtime;
-use tower_web::ServiceBuilder;
+use tokio::net::TcpListener;
+use tokio::sync::watch;
 
-use bgpd::{Server, ServerConfig, API};
+use bgpd::api::serve;
+use bgpd::config;
+use bgpd::handler::Server;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "bgpd", rename_all = "kebab-case")]
@@ -33,7 +36,8 @@ pub struct Args {
     pub verbose: u8,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::from_args();
 
     let (bgpd_level, other_level) = match args.verbose {
@@ -48,21 +52,32 @@ fn main() -> Result<()> {
         .init();
     info!("Logging at levels {}/{}", bgpd_level, other_level);
 
-    let config = ServerConfig::from_file(&args.config_path)?;
+    let config = Arc::new(config::from_file(&args.config_path)?);
     debug!("Found {} peers in {}", config.peers.len(), args.config_path);
+    trace!("Using config: {:#?}", &config);
+    let (config_tx, config_rx) = watch::channel(config.clone());
+    config_tx.broadcast(config.clone())?;
 
-    let mut runtime = Runtime::new().unwrap();
     let socket = SocketAddr::from((args.address, args.port));
-    let server = Server::from_config(socket, config)?;
-    let state = server.clone_state();
-    info!("Starting BGP server on {}...", socket);
-    runtime.spawn(server);
+    let bgp_listener = TcpListener::bind(&socket).await?;
+    let mut bgp_server = Server::new(config, bgp_listener, config_rx)?;
+    // Setup JSON RPC Server
+    let state = bgp_server.clone_state();
+    let http_socket: SocketAddr = (args.http_addr, args.http_port).into();
+    serve(http_socket, state).await;
 
-    let http_socket = (args.http_addr, args.http_port).into();
-    ServiceBuilder::new()
-        .resource(API(state))
-        .run(&http_socket)
-        .unwrap();
-    runtime.shutdown_on_idle().wait().unwrap();
-    Ok(())
+    let signals = Signals::new(&[SIGHUP])?;
+    std::thread::spawn(move || {
+        for sig in signals.forever() {
+            info!("Received {}, reloading config", sig);
+            config::from_file(&args.config_path)
+                .map(|new_config| config_tx.broadcast(Arc::new(new_config)))
+                .map_err(|err| error!("Error reloading config: {}", err))
+                .ok();
+        }
+    });
+
+    // Start BGP Daemon
+    info!("Starting BGP daemon on {}...", socket);
+    bgp_server.run().await
 }

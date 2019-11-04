@@ -3,28 +3,24 @@
 BGP service daemon built in Rust
 [![Actions Status](https://github.com/thepacketgeek/bgpd-rs/workflows/cargo/badge.svg)](https://github.com/thepacketgeek/bgpd-rs/actions)
 
-Totally just a POC, mostly for my own amusement
+ > Totally just a Proof-of-concept, mostly for my own amusement and learning
 
 ![PCAP](examples/pcap.png)
 
 
 ## Features
 - [x] Listen for Incoming BGP sessions 
-- [x] Parse OPEN, save capabilities
-- [x] Send OPEN with capabilities 
+- [x] Initiate outbound TCP connection to idle peers
+- [x] Negotiate OPEN Capabilities
 - [x] Receive and respond to Keepalives (on hold time based interval)
-- [x] Process UPDATE messages, parsing with capabilities
-- [x] Store received routes
+- [x] Process UPDATE messages, store in RIB
+- [x] Config reloading for Peer status (enable, passive, etc.)
 - [x] CLI interface for viewing peer status, routes, etc.
-- [x] Advertise routes to peers (specified from API)
+- [x] Advertise routes to peers (specified from API and/or Config) 
 - [x] API/CLI interface for interacting with BGPd
-- [ ] Initiate outbound TCP connection to idle peers
-- [ ] Route Policy for advertisement of learned routes (a.k.a Route Reflector)?
-
-## Thanks to
-- [bgp-rs](https://github.com/DevQps/bgp-rs) for the BGP Message Parsing
-- [tokio](https://tokio.rs/) for the Runtime
-- [tower](https://github.com/carllerche/tower-web) for the HTTP API
+- [ ] Route Policy for filtering of learned & advertised routes
+- [ ] Flowspec Support
+- [ ] Smarter RIB for processing large NLRI datasets
 
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
@@ -40,102 +36,95 @@ remote_as = 65000
 passive = true              # If passive, bgpd won't attempt outbound connections
 router_id = "127.0.0.1"     # Can override local Router ID for this peer
 hold_timer = 90             # Set the hold timer for the peer, defaults to 180 seconds
+families = [                # Define the families this session should support
+  "ipv4 unicast",
+  "ipv6 unicast",
+]
+[[peers.static_routes]]     # Add static routes (advertised at session start)
+  prefix = "9.9.9.0/24"
+  next_hop = "127.0.0.1"
+[[peers.static_routes]]
+  prefix = "3001:100::/64"
+  next_hop = "3001:1::1"
 
 [[peers]]
 remote_ip = "::2"
-remote_as = 65000
-local_as = 100
+enabled = false             # Peer is essentially de-configured
+remote_as = 100
+local_as = 200
+families = [
+  "ipv6 unicast",
+]
 ```
 
+You can send the BGPd process a `SIGHUP` to reload and update peer configs. The following items can be updated:
+
+## Peers
+- Enabled/Disabled
+- *Active polling for new session
+- *Hold Timer
+- *Supported Families
+
+ > * When not in an active session only
+
+
 # View BGPd Information
-BGPd offers an HTTP API that can be queried to view operational info like neighbors and routes:
+BGPd offers an JSON RCP API that can be queried to view operational info like neighbors and routes:
 
 Neighbor uptime & prefixes received
 ```
-$ curl -s http://127.0.0.1:8080/show/neighbors | jq '.[] | {peer: .neighbor, uptime: .uptime, prefixes: .prefixes_received}'
+$ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"show_peers","params":null,"id":0}' | jq '.result[] | {peer: .peer, uptime: .uptime, prefixes_received: .prefixes_received}'
 {
   "peer": "127.0.0.2",
-  "uptime": "00:01:53",
-  "pfxs": 3
+  "uptime": "00:31:13",
+  "prefixes_received": 4
 }
 {
   "peer": "127.0.0.3",
-  "uptime": "00:01:43",
-  "pfxs": 2
+  "uptime": null,
+  "prefixes_received": null
 }
 {
-  "peer": "::0.0.0.2",
-  "uptime": null,
-  "pfxs": null
+  "peer": "172.16.20.2",
+  "uptime": "00:31:20",
+  "prefixes_received": 2
 }
 ```
 
 Learned routes (with attributes)
 ```
-$ curl -s http://127.0.0.1:8080/show/routes/learned | jq
-[
-  {
-    "age": "00:03:21",
-    "as_path": "",
-    "communities": "404 65000.10",
-    "local_pref": 100,
-    "multi_exit_disc": 10,
-    "next_hop": "127.0.0.2",
-    "origin": "127.0.0.2",
-    "prefix": "2.10.0.0",
-    "received_at": 1565200222,
-    "received_from": "2.2.2.2"
-  },
-  {
-    "age": "00:03:21",
-    "as_path": "100 200",
-    "communities": "",
-    "local_pref": 100,
-    "multi_exit_disc": null,
-    "next_hop": "127.0.0.2",
-    "origin": "127.0.0.2",
-    "prefix": "2.200.0.0",
-    "received_at": 1565200222,
-    "received_from": "2.2.2.2"
-  },
-  ...
-  {
-    "age": "00:03:11",
-    "as_path": "",
-    "communities": "",
-    "local_pref": 300,
-    "multi_exit_disc": null,
-    "next_hop": "127.0.0.3",
-    "origin": "127.0.0.3",
-    "prefix": "3.200.0.0",
-    "received_at": 1565200232,
-    "received_from": "3.3.3.3"
-  }
-]
+$ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"show_routes_learned","params": {"from_peer": "172.16.20.2"},"id":0}' | jq '.result[]'
+{
+  "afi": "IPv6",
+  "age": "00:00:38",
+  "as_path": "",
+  "communities": [],
+  "local_pref": 100,
+  "multi_exit_disc": null,
+  "next_hop": "::ffff:172.16.20.2",
+  "origin": "IGP",
+  "prefix": "3001:172:16:20::/64",
+  "received_at": 1572898659,
+  "safi": "Unicast",
+  "source": "172.16.20.2"
+}
+{
+  "afi": "IPv4",
+  "age": "00:00:38",
+  "as_path": "",
+  "communities": [],
+  "local_pref": 100,
+  "multi_exit_disc": null,
+  "next_hop": "172.16.20.2",
+  "origin": "IGP",
+  "prefix": "172.16.20.0/24",
+  "received_at": 1572898659,
+  "safi": "Unicast",
+  "source": "172.16.20.2"
+}
 ```
 
-Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API
-
-# Advertising Routes
-Adding routes to be advertised to certain peers can be done via the HTTP API:
-
-```
-curl http://127.0.0.1:8080/advertise/prefix/ -d '{"router_id": "2.2.2.2", "prefix": "9.9.9.0/24", "next_hop": "127.0.0.1"}' -H "Content-Type: application/json"
-```
-
-Will get advertised to the peer `2.2.2.2`:
-```
-$ bgpd-cli show routes advertised
- Neighbor  AFI   Prefix      Next Hop   Age       Origin      Local Pref  Metric  AS Path  Communities
--------------------------------------------------------------------------------------------------------
- 2.2.2.2   IPv4  9.9.9.0/24  127.0.0.1  00:00:24  Incomplete
-```
-
-And showing up in the ExaBGP process
-```
-$ exabgpcli show adj-rib in
-neighbor 127.0.0.1 ipv4 unicast 9.9.9.0/24 next-hop 127.0.0.1
-```
+Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API (and Announce routes too!)
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
@@ -188,3 +177,8 @@ You may notice that I'm using TCP port 1179 for testing, if you want/need to use
 $ cargo build
 $ sudo ./targets/debug/bgpd ./examples/config.toml -vv
 ```
+
+# Thanks to
+- [bgp-rs](https://github.com/DevQps/bgp-rs) for the BGP Message Parsing
+- [tokio](https://tokio.rs/) for the Runtime
+- [ParityTech](https://github.com/paritytech/jsonrpsee) for the JSON RPC API

@@ -1,36 +1,131 @@
-# BGPd-cli
+# BGPd CLI
 
 This is an example CLI that uses the BGPd API to interact with a running instance of BGPd. It uses the default endpoint for the BGPd HTTP API (localhost:8080), but you can point to BGPd running remotely using the `--host` and `--port` options.
 
 ## Features
-- [x] CLI interface for viewing peer status, routes, etc.
-- [ ] Advertise routes (specified somewhere?)
+- [x] CLI interface for viewing peer status and details
+- [x] View learned routes (with source)
+- [x] View advertised routes
+- [x] Advertise IPv4/IPv6 Unicast routes (More attribute support coming soon)
+- [ ] Advertise IPv4/IPv6 Flowspec flows
+- [ ] Enable/disable Peers
 
 
-# Commands
-Currently the CLI is a one-trick-pony and just shows some info from BGPd.
+# Show Commands
 
-## Show
+## Neighbors
 Use `bgpd-cli` for viewing peer & route information:
 
-Current peer session status:
+Peer summary:
 ```
 [~/bgpd-rs/examples/cli] $ cargo run -- show neighbors
-Neighbor     AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
- ::0.0.0.2    65000  6        3        00:00:11  Established  0
- 127.0.0.2    65000                              Idle         
- 127.0.0.3    65000                              Idle         
+ Neighbor     Router ID    AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
+----------------------------------------------------------------------------------
+ 127.0.0.2    2.2.2.2      100    76       70       00:11:27  Established  4
+ *127.0.0.3                65000                              Disabled
+ 172.16.20.2  172.16.20.2  65000  29       28       00:11:33  Established  2
 ```
+ > Tip: Use the `watch` command for keeping this view up-to-date
+
+Peer Detail:
+```
+BGP neighbor is 127.0.0.3,  remote AS 65000, local AS 65000
+  *Peer is Disabled
+  Neighbor capabilities:
+    IPv4 Unicast
+    IPv4 Flowspec
+    IPv6 Unicast
+    IPv6 Flowspec
+
+
+BGP neighbor is 172.16.20.2,  remote AS 65000, local AS 65000
+  BGP version 4,  remote router-id 172.16.20.2
+    Local address: 172.16.20.90:55687
+    Remote address: 172.16.20.2:179
+  BGP state = Established, up for 00:11:59
+  Hold time is 90 (00:01:18), keepalive interval is 30
+    Last read 00:00:03, last write 00:00:11
+  Neighbor capabilities:
+    Address family IPv6 Unicast
+    Address family IPv4 Unicast
+
+  Message Statistics:
+                      Sent      Received
+    Total             30        29
+```
+
+## Routes
 
 Learned routes:
 ```
 [~/bgpd-rs/examples/cli] $ cargo build
-[~/bgpd-rs/examples/cli] $ ./targets/debug/cli show routes learned
-Neighbor  AFI   Prefix     Next Hop   Age       Origin  Local Pref  Metric  AS Path  Communities
- 2.2.2.2   IPv4  2.10.0.0   127.0.0.2  00:00:10  IGP     100         10               404 65000.10
- 2.2.2.2   IPv4  2.100.0.0  127.0.0.2  00:00:10  IGP     100         500              target:65000:1.1.1.1 redirect:65000:100
- 2.2.2.2   IPv4  2.200.0.0  127.0.0.2  00:00:10  IGP     100                 100 200
- 3.3.3.3   IPv4  3.100.0.0  127.0.0.3  00:00:09  IGP     100                 300
- 3.3.3.3   IPv4  3.200.0.0  127.0.0.3  00:00:09  IGP     300
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes learned
+IPv4 / Unicast
+ Received From  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities           Age
+--------------------------------------------------------------------------------------------------------------------------------
+ Config         9.9.9.0/24      172.16.20.90  00:08:00  Incomplete                                                     00:08:00
+ 172.16.20.2    172.16.20.0/24  172.16.20.2   00:07:54  IGP         100                                                00:07:54
+ 127.0.0.2      2.100.0.0/24    127.0.0.2     00:07:46  IGP                     500     100      target:65000:1.1.1.1  00:07:46
+ 127.0.0.2      2.200.0.0/24    127.0.0.2     00:07:46  IGP                             100 200                        00:07:46
+
+IPv6 / Unicast
+ Received From  Prefix               Next Hop            Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------------------
+ Config         3001:404:a::/64      3001:1::1           00:08:00  Incomplete                                            00:08:00
+ Config         3001:404:b::/64      3001:1::1           00:08:00  Incomplete                                            00:08:00
+ 172.16.20.2    3001:172:16:20::/64  ::ffff:172.16.20.2  00:07:54  IGP         100                                       00:07:54
+ 127.0.0.2      2621:a:10::/64       3001:1::1           00:07:46  IGP                             600 650               00:07:46
+ 127.0.0.2      2621:a:1337::/64     3001:1::1           00:07:46  IGP                     404     100                   00:07:46
 ```
- > Tip: Use the `watch` command for keeping this view up-to-date
+
+Advertised routes:
+```
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes advertised
+IPv4 / Unicast
+ Advertised To  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+-----------------------------------------------------------------------------------------------------------------------
+ 127.0.0.2      172.16.20.0/24  172.16.20.2   00:08:01  IGP         100                                       00:08:01
+ 172.16.20.2    9.9.9.0/24      172.16.20.90  00:08:06  Incomplete                                            00:08:06
+
+IPv6 / Unicast
+ Advertised To  Prefix               Next Hop            Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------------------
+ 127.0.0.2      3001:172:16:20::/64  ::ffff:172.16.20.2  00:08:01  IGP         100                                       00:08:01
+ 172.16.20.2    3001:404:a::/64      3001:1::1           00:08:06  Incomplete                                            00:08:06
+ 172.16.20.2    3001:404:b::/64      3001:1::1           00:08:06  Incomplete                                            00:08:06
+```
+
+## Advertise
+
+IPv4 Unicast
+```
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise route 10.10.10.0/24 172.16.20.90 --local-pref 500
+Added route to RIB for announcement:
+ Received From  Prefix         Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------
+ API            10.10.10.0/24  172.16.20.90  00:00:00  Incomplete                                            00:00:00
+```
+
+IPv6 Unicast
+```
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise route 10.10.10.0/24 172.16.20.90 --local-pref 500
+Added route to RIB for announcement:
+ Received From  Prefix         Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------
+ API            10.10.10.0/24  172.16.20.90  00:00:00  Incomplete                                            00:00:00
+```
+
+```
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes advertised
+IPv4 / Unicast
+ Advertised To  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+-----------------------------------------------------------------------------------------------------------------------
+ ...
+ 172.16.20.2    10.10.10.0/24   172.16.20.90  00:01:17  Incomplete                                            00:01:17
+
+IPv6 / Unicast
+ Advertised To  Prefix               Next Hop            Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------------------
+ ...
+ 172.16.20.2    3001:100:abcd::/64   3001:1::1           00:00:03  Incomplete                                            00:00:03
+```

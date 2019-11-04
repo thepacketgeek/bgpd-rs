@@ -3,7 +3,7 @@ use std::fmt;
 use std::net::{AddrParseError, IpAddr};
 use std::num::ParseIntError;
 
-use bgp_rs::{ASPath, Prefix, Segment, AFI};
+use bgp_rs::{ASPath, Message, Prefix, Segment, AFI};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
 #[derive(Debug)]
@@ -26,6 +26,16 @@ impl fmt::Display for ParseError {
 impl Error for ParseError {
     fn description(&self) -> &str {
         "Error parsing to/from IP/BGP messages"
+    }
+}
+
+pub fn get_message_type(message: &Message) -> &'static str {
+    match message {
+        Message::KeepAlive => "KEEPALIVE",
+        Message::Open(_) => "OPEN",
+        Message::Notification(_) => "NOTIFICATION",
+        Message::RouteRefresh(_) => "ROUTEREFRESH",
+        Message::Update(_) => "UPDATE",
     }
 }
 
@@ -302,5 +312,4 @@ mod tests {
             String::from("redirect:65000:100")
         );
     }
-
 }

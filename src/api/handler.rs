@@ -1,131 +1,175 @@
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use bgp_rs::{ASPath, Origin};
-use chrono::Utc;
-use http::StatusCode;
-use log::error;
-use serde_json::json;
-use tower_web::error::Error;
-use tower_web::*;
+use bgp_rs::{ASPath, NLRIEncoding, Origin, SAFI};
+use bgpd_rpc_lib::{AdvertiseRoute, Api, LearnedRoute, PeerDetail, PeerSummary};
+use jsonrpsee;
+use log::info;
 
 use crate::handler::State;
-use crate::models::{CommunityList, Route, RouteState};
+use crate::rib::{CommunityList, EntrySource, Family, PathAttributes, StoredUpdate};
+
+use super::peers::{peer_to_detail, peer_to_summary};
+use super::routes::entry_to_route;
 use crate::utils::prefix_from_string;
 
-use super::peers::{PeerSummaries, PeerSummary};
-use super::routes::{AdvertisedRoutes, LearnedRoutes};
+pub async fn serve(socket: SocketAddr, state: Arc<State>) {
+    info!("Starting JSON-RPC server on {}...", socket);
+    tokio::spawn(async move {
+        let mut server = jsonrpsee::http_server(&socket).await.unwrap();
 
-pub struct API(pub Arc<State>);
-
-#[derive(Debug, Extract)]
-struct AdvertisePrefixData {
-    router_id: String,
-    prefix: String,
-    next_hop: Option<String>,
-    med: Option<u32>,
+        while let Ok(request) = Api::next_request(&mut server).await {
+            match request {
+                Api::ShowPeers { respond } => {
+                    let mut output: Vec<PeerSummary> = vec![];
+                    let sessions = state.sessions.lock().await;
+                    let peers = sessions.get_peer_configs();
+                    let active_sessions = sessions.sessions.lock().await;
+                    let rib = state.rib.lock().await;
+                    let peer_info = peers
+                        .into_iter()
+                        .map(|config| {
+                            let session = active_sessions.get(&config.remote_ip);
+                            let pfx_rcvd = {
+                                if let Some(session) = session {
+                                    let routes = rib.get_routes_from_peer(session.peer.remote_ip);
+                                    Some(routes.len() as u64)
+                                } else {
+                                    None
+                                }
+                            };
+                            peer_to_summary(config, session, pfx_rcvd)
+                        })
+                        .collect::<Vec<PeerSummary>>();
+                    output.extend(peer_info);
+                    respond.ok(output).await;
+                }
+                Api::ShowPeerDetail { respond } => {
+                    let mut output: Vec<PeerDetail> = vec![];
+                    let sessions = state.sessions.lock().await;
+                    let peers = sessions.get_peer_configs();
+                    let active_sessions = sessions.sessions.lock().await;
+                    let rib = state.rib.lock().await;
+                    let peer_info = peers
+                        .into_iter()
+                        .map(|config| {
+                            let session = active_sessions.get(&config.remote_ip);
+                            let pfx_rcvd = {
+                                if let Some(session) = session {
+                                    let routes = rib.get_routes_from_peer(session.addr);
+                                    Some(routes.len() as u64)
+                                } else {
+                                    None
+                                }
+                            };
+                            peer_to_detail(config, session, pfx_rcvd)
+                        })
+                        .collect::<Vec<PeerDetail>>();
+                    output.extend(peer_info);
+                    respond.ok(output).await;
+                }
+                Api::ShowRoutesLearned { respond, from_peer } => {
+                    let mut output: Vec<LearnedRoute> = vec![];
+                    let rib = state.rib.lock().await;
+                    let entries = if let Some(peer) = from_peer {
+                        rib.get_routes_from_peer(peer)
+                    } else {
+                        rib.get_routes()
+                    };
+                    let routes: Vec<_> = entries
+                        .into_iter()
+                        .map(|entry| entry_to_route(entry))
+                        .collect();
+                    output.extend(routes);
+                    respond.ok(output).await;
+                }
+                Api::ShowRoutesAdvertised { respond, to_peer } => {
+                    let mut output: Vec<LearnedRoute> = vec![];
+                    let sessions = state.sessions.lock().await;
+                    let active_sessions = sessions.sessions.lock().await;
+                    // TODO: How to get/store the actual sent info
+                    //       like ASPath, etc (after policy)
+                    let routes: Vec<LearnedRoute> = active_sessions
+                        .values()
+                        .filter(|s| {
+                            if let Some(addr) = to_peer {
+                                s.addr == addr
+                            } else {
+                                true
+                            }
+                        })
+                        .map(|s| {
+                            s.routes
+                                .advertised()
+                                .into_iter()
+                                .map(|entry| {
+                                    // TODO: Process advertised routes differently
+                                    //       so we can report actual advertised info
+                                    let mut entry = entry_to_route(entry);
+                                    entry.source = EntrySource::Peer(s.addr).to_string();
+                                    entry
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .flatten()
+                        .collect();
+                    output.extend(routes);
+                    respond.ok(output).await;
+                }
+                Api::AdvertiseRoute { respond, route } => {
+                    let response = match advertise_route_to_update(route) {
+                        Ok(update) => {
+                            let mut rib = state.rib.lock().await;
+                            let entry = rib.insert_from_api(update);
+                            Ok(entry_to_route(entry))
+                        }
+                        Err(err) => Err(err.to_string()),
+                    };
+                    respond.ok(response).await;
+                }
+            }
+        }
+    });
 }
 
-impl_web! {
-    impl API {
-        #[get("/show/neighbors")]
-        #[content_type("json")]
-        fn show_neighbors(&self) -> Result<PeerSummaries, Error> {
-            let mut output: Vec<PeerSummary> = vec![];
-            self.0.idle_peers.lock().map(|idle_peers| {
-                output.extend(idle_peers.peers().iter().map(|&p| p.into()).collect::<Vec<_>>());
-            }).map_err(|err| {
-                error!("Error fetching peers: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-            self.0.sessions.lock().map(|sessions| {
-                output.extend(sessions.values().map(|s| s.into()).collect::<Vec<_>>());
-            }).map_err(|err| {
-                error!("Error fetching sessions: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-            Ok(PeerSummaries(output))
-        }
+fn advertise_route_to_update(route: AdvertiseRoute) -> Result<StoredUpdate, String> {
+    let prefix = prefix_from_string(&route.prefix).map_err(|err| err.to_string())?;
+    let next_hop = route
+        .next_hop
+        .parse::<IpAddr>()
+        .map_err(|err| err.to_string())?;
+    let origin = route
+        .origin
+        .map(|origin| match origin.to_lowercase().as_str() {
+            "igp" => Origin::IGP,
+            "egp" => Origin::EGP,
+            "?" | "incomplete" => Origin::INCOMPLETE,
+            _ => Origin::INCOMPLETE,
+            // TODO: Raise on invalid Origin
+            // _ => Err(format!(
+            //     "Invalid Origin '{}'. Must be one of: IGP, EGP, ?",
+            //     origin
+            // )),
+        })
+        .unwrap_or(Origin::INCOMPLETE);
+    let as_path = ASPath { segments: vec![] };
+    //     segments: route.as_path.split(" ").iter().collect(),
+    // };
 
-        #[get("/show/routes/learned")]
-        #[content_type("json")]
-        fn show_routes_learned(&self) -> Result<LearnedRoutes, Error> {
-            self.0.learned_routes.lock().map(|routes|{
-                Ok(LearnedRoutes(routes.iter().map(|r| r.into()).collect()))
-            }).map_err(|err| {
-                error!("Error fetching routes: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?
-        }
+    let communities = CommunityList(vec![]);
 
-        #[get("/show/routes/learned/:router_id")]
-        #[content_type("json")]
-        fn show_routes_learned_for_peer(&self, router_id: String) -> Result<LearnedRoutes, Error> {
-            let router_id = router_id.parse::<IpAddr>()
-                .map_err(|_err| Error::builder().status(StatusCode::BAD_REQUEST).detail("Invalid Router ID").build())?;
-            self.0.learned_routes.lock().map(move |routes| {
-                Ok(LearnedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| r.into()).collect()))
-            }).map_err(|err| {
-                error!("Error fetching routes: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?
-        }
+    let attributes = Arc::new(PathAttributes {
+        next_hop: Some(next_hop),
+        origin,
+        as_path,
+        local_pref: route.local_pref,
+        multi_exit_disc: route.multi_exit_disc,
+        communities,
+    });
 
-        #[get("/show/routes/advertised")]
-        #[content_type("json")]
-        fn show_routes_advertised(&self) -> Result<AdvertisedRoutes, Error> {
-            self.0.advertised_routes.lock().map(|routes|{
-                Ok(AdvertisedRoutes(routes.iter().map(|r| r.into()).collect()))
-            }).map_err(|err| {
-                error!("Error fetching routes: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?
-        }
-
-        #[get("/show/routes/advertised/:router_id")]
-        #[content_type("json")]
-        fn show_routes_advertised_for_peer(&self, router_id: String) -> Result<AdvertisedRoutes, Error> {
-            let router_id = router_id.parse::<IpAddr>()
-                .map_err(|_err| Error::builder().status(StatusCode::BAD_REQUEST).detail("Invalid Router ID").build())?;
-            self.0.advertised_routes.lock().map(move |routes| {
-                Ok(AdvertisedRoutes(routes.iter().filter(|r| r.peer == router_id).map(|r| r.into()).collect()))
-            }).map_err(|err| {
-                error!("Error fetching routes: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?
-        }
-
-        #[post("/advertise/prefix")]
-        #[content_type("json")]
-        fn advertise_prefix_to_peer(&self, body: AdvertisePrefixData) -> Result<serde_json::Value, Error> {
-            let router_id = &body.router_id.parse::<IpAddr>()
-                .map_err(|_err| Error::new("Bad Request", "Invalid Router ID", StatusCode::BAD_REQUEST))?;
-            let prefix = prefix_from_string(&body.prefix).map_err(|_err|  Error::new("Bad Request", "Invalid Prefix", StatusCode::BAD_REQUEST))?;
-            let next_hop = match body.next_hop {
-                Some(next_hop) => next_hop.parse::<IpAddr>()
-                    .map_err(|_err| Error::new("Bad Request", "Invalid Next Hop", StatusCode::BAD_REQUEST))?,
-                None => "0.0.0.0".parse::<IpAddr>().unwrap(),
-            };
-
-            let route = Route {
-                peer: *router_id,
-                state: RouteState::Pending(Utc::now()),
-                prefix,
-                next_hop,
-                origin: Origin::INCOMPLETE,
-                as_path: ASPath { segments: vec![] },
-                local_pref: None,
-                multi_exit_disc: body.med,
-                communities: CommunityList(vec![]),
-            };
-
-            self.0.pending_routes.lock().map(|mut p_routes| {
-                p_routes.push(route);
-            }).map_err(|err| {
-                error!("Error adding route: {}", err);
-                Error::from(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-            Ok(json!({ "status": "success", }))
-        }
-    }
+    Ok(StoredUpdate {
+        family: Family::new(prefix.protocol, SAFI::Unicast),
+        attributes,
+        nlri: NLRIEncoding::IP(prefix),
+    })
 }

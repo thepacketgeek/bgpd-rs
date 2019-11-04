@@ -1,6 +1,7 @@
 router_id = "1.1.1.1"       # Default Router ID for the service
 default_as = 65000
-output_dir = "./"
+poll_interval = 5
+
 
 [[peers]]
 remote_ip = "127.0.0.2"
@@ -8,6 +9,14 @@ dest_port = 1179
 remote_as = 65000
 local_as = 65000
 router_id = "127.0.0.1"     # Can override local Router ID for this peer
+hold_timer = 30
+families = [
+    "ipv4 unicast",
+    "ipv6 unicast",
+    "ipv4 flow",
+    "ipv6 flow",
+]
+passive = true              # If passive, bgpd won't attempt outbound connections
 
 [[peers]]
 remote_ip = "127.0.0.3"
@@ -21,5 +30,8 @@ remote_ip = "::2"
 dest_port = 1179
 remote_as = 65000
 local_as = 65000
-passive = true             # If passive, bgpd won't attempt outbound connections
-hold_timer = 30
+families = [
+    "ipv6 unicast",
+    "ipv6 flow",
+]
+passive = true
