@@ -24,6 +24,9 @@ dest_port = 1179
 remote_as = 65000
 local_as = 65000
 hold_timer = 30
+advertise_sources = [
+    "api", "peer", "config",
+]
 
 [[peers]]
 remote_ip = "::2"

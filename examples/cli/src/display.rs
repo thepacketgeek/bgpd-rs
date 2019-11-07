@@ -78,7 +78,7 @@ impl ToRow for LearnedRouteRow {
         let route = &self.0;
         let row = row![
             route.source,
-            route.prefix,
+            route.prefix.replace("; ", "\n"),
             display_cell(route.next_hop.as_ref()),
             route.age,
             route.origin,

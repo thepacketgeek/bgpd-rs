@@ -1,7 +1,7 @@
 use std::io::{Error, Read};
 use std::result::Result;
 
-use bgp_rs::{Message, Open, OpenCapability, OpenParameter, Reader};
+use bgp_rs::{Message, Reader};
 use byteorder::{NetworkEndian, ReadBytesExt};
 use bytes::{BufMut, BytesMut};
 use tokio::net::TcpStream;
@@ -72,25 +72,6 @@ fn find_msg_range(data: &[u8]) -> Result<MsgRange, String> {
     } else {
         Err("Couldn't determine BGP message start/stop (No preamble found)".to_string())
     }
-}
-
-/// Check 4-byte ASN first, fallback to 2-byte
-pub fn asn_from_open(open: &Open) -> u32 {
-    open.parameters
-        .iter()
-        .map(|p| match p {
-            OpenParameter::Capabilities(caps) => caps.clone(),
-            _ => vec![],
-        })
-        .flatten()
-        .map(|c| match c {
-            OpenCapability::FourByteASN(asn) => Some(asn),
-            _ => None,
-        })
-        .filter(|c| c.is_some())
-        .next()
-        .unwrap_or_else(|| Some(u32::from(open.peer_asn)))
-        .unwrap()
 }
 
 #[cfg(test)]

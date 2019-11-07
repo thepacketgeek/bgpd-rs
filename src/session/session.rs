@@ -12,11 +12,11 @@ use chrono::{DateTime, Utc};
 use log::{debug, trace, warn};
 use tokio::prelude::*;
 
-use super::codec::{asn_from_open, MessageProtocol};
+use super::codec::MessageProtocol;
 use super::{HoldTimer, MessageCounts};
 use super::{SessionError, SessionState, SessionUpdate};
 use crate::config::{AdvertiseSource, PeerConfig};
-use crate::rib::{session::SessionRoutes, EntrySource, Families, StoredUpdate};
+use crate::rib::{session::SessionRoutes, EntrySource, ExportedUpdate, Families};
 use crate::utils::{as_u32_be, format_time_as_elapsed, get_message_type, transform_u32_to_bytes};
 
 /// This is where a connected peer is managed.
@@ -176,6 +176,8 @@ impl Session {
             for entry in pending_routes.drain(..) {
                 self.send_message(Message::Update(self.create_update(&entry.update)))
                     .await?;
+                // TODO: Store actual advertised routes
+                //       so we can report outgoing updates as advertised
                 self.routes.mark_advertised(&entry);
             }
         }
@@ -289,7 +291,7 @@ impl Session {
         }
     }
 
-    pub fn create_update(&self, update: &StoredUpdate) -> Update {
+    pub fn create_update(&self, update: &ExportedUpdate) -> Update {
         let mut attributes: Vec<PathAttribute> = Vec::with_capacity(4);
         // Well-known, Mandatory Attributes
         attributes.push(PathAttribute::ORIGIN(update.attributes.origin.clone()));
@@ -336,7 +338,14 @@ impl Session {
             .multi_exit_disc
             .map(|med| attributes.push(PathAttribute::MULTI_EXIT_DISC(med)));
 
-        // TODO: COMMMUNITIES
+        let standard_communities = update.attributes.communities.standard();
+        if !standard_communities.is_empty() {
+            attributes.push(PathAttribute::COMMUNITY(standard_communities));
+        }
+        let extd_communities = update.attributes.communities.extended();
+        if !extd_communities.is_empty() {
+            attributes.push(PathAttribute::EXTENDED_COMMUNITIES(extd_communities));
+        }
         let mut to_send = Update {
             withdrawn_routes: Vec::new(),
             attributes,
@@ -409,4 +418,23 @@ fn fsm_err_for_state(state: &SessionState) -> u8 {
         Established => 3,
         _ => 0,
     }
+}
+
+/// Check 4-byte ASN first, fallback to 2-byte
+fn asn_from_open(open: &Open) -> u32 {
+    open.parameters
+        .iter()
+        .map(|p| match p {
+            OpenParameter::Capabilities(caps) => caps.clone(),
+            _ => vec![],
+        })
+        .flatten()
+        .map(|c| match c {
+            OpenCapability::FourByteASN(asn) => Some(asn),
+            _ => None,
+        })
+        .filter(|c| c.is_some())
+        .next()
+        .unwrap_or_else(|| Some(u32::from(open.peer_asn)))
+        .unwrap()
 }

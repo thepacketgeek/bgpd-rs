@@ -19,7 +19,7 @@ BGP service daemon built in Rust
 - [x] Advertise routes to peers (specified from API and/or Config) 
 - [x] API/CLI interface for interacting with BGPd
 - [ ] Route Policy for filtering of learned & advertised routes
-- [ ] Flowspec Support
+- [~] Flowspec Support (Still need API & Config specs)
 - [ ] Smarter RIB for processing large NLRI datasets
 
 # Peer config

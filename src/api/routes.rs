@@ -1,28 +1,21 @@
 use std::sync::Arc;
 
-use bgp_rs::{FlowspecFilter, NLRIEncoding, Segment};
+use bgp_rs::{NLRIEncoding, Segment};
 use bgpd_rpc_lib::LearnedRoute;
 
-use crate::rib::Entry;
-use crate::utils::format_time_as_elapsed;
+use crate::rib::ExportEntry;
+use crate::utils::{format_time_as_elapsed, u32_to_dotted};
 
-pub fn entry_to_route(entry: Arc<Entry>) -> LearnedRoute {
+pub fn entry_to_route(entry: Arc<ExportEntry>) -> LearnedRoute {
     let prefix = {
         use NLRIEncoding::*;
         match &entry.update.nlri {
             IP(prefix) => prefix.to_string(),
             FLOWSPEC(filters) => filters
                 .iter()
-                .map(|f| {
-                    use FlowspecFilter::*;
-                    match f {
-                        DestinationPrefix(p) => format!("Dst: {}", p),
-                        SourcePrefix(p) => format!("Src: {}", p),
-                        _ => format!("{:?}", f),
-                    }
-                })
-                .collect::<Vec<String>>()
-                .join(", "),
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>()
+                .join("; "),
             nlri => format!("{:?}", nlri),
         }
     };
@@ -47,7 +40,7 @@ pub fn entry_to_route(entry: Arc<Entry>) -> LearnedRoute {
                     Segment::AS_SET(asns) => asns,
                 };
                 asns.iter()
-                    .map(std::string::ToString::to_string)
+                    .map(|asn| u32_to_dotted(*asn, '.'))
                     .collect::<Vec<String>>()
                     .join(" ")
             })

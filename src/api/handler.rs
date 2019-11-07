@@ -1,17 +1,18 @@
+use std::convert::TryFrom;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use bgp_rs::{ASPath, NLRIEncoding, Origin, SAFI};
+use bgp_rs::{ASPath, NLRIEncoding, Origin, PathAttribute, Segment, SAFI};
 use bgpd_rpc_lib::{AdvertiseRoute, Api, LearnedRoute, PeerDetail, PeerSummary};
 use jsonrpsee;
 use log::info;
 
 use crate::handler::State;
-use crate::rib::{CommunityList, EntrySource, Family, PathAttributes, StoredUpdate};
+use crate::rib::{Community, CommunityList, EntrySource, Family};
 
 use super::peers::{peer_to_detail, peer_to_summary};
 use super::routes::entry_to_route;
-use crate::utils::prefix_from_string;
+use crate::utils::{asn_from_dotted, prefix_from_string};
 
 pub async fn serve(socket: SocketAddr, state: Arc<State>) {
     info!("Starting JSON-RPC server on {}...", socket);
@@ -87,8 +88,6 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     let mut output: Vec<LearnedRoute> = vec![];
                     let sessions = state.sessions.lock().await;
                     let active_sessions = sessions.sessions.lock().await;
-                    // TODO: How to get/store the actual sent info
-                    //       like ASPath, etc (after policy)
                     let routes: Vec<LearnedRoute> = active_sessions
                         .values()
                         .filter(|s| {
@@ -103,8 +102,6 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                                 .advertised()
                                 .into_iter()
                                 .map(|entry| {
-                                    // TODO: Process advertised routes differently
-                                    //       so we can report actual advertised info
                                     let mut entry = entry_to_route(entry);
                                     entry.source = EntrySource::Peer(s.addr).to_string();
                                     entry
@@ -119,8 +116,9 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 Api::AdvertiseRoute { respond, route } => {
                     let response = match advertise_route_to_update(route) {
                         Ok(update) => {
+                            let (attributes, family, nlri) = update;
                             let mut rib = state.rib.lock().await;
-                            let entry = rib.insert_from_api(update);
+                            let entry = rib.insert_from_api(family, attributes, nlri);
                             Ok(entry_to_route(entry))
                         }
                         Err(err) => Err(err.to_string()),
@@ -132,44 +130,65 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
     });
 }
 
-fn advertise_route_to_update(route: AdvertiseRoute) -> Result<StoredUpdate, String> {
+fn advertise_route_to_update(
+    route: AdvertiseRoute,
+) -> Result<(Vec<PathAttribute>, Family, NLRIEncoding), String> {
     let prefix = prefix_from_string(&route.prefix).map_err(|err| err.to_string())?;
+    let mut attributes = vec![];
     let next_hop = route
         .next_hop
         .parse::<IpAddr>()
         .map_err(|err| err.to_string())?;
-    let origin = route
-        .origin
-        .map(|origin| match origin.to_lowercase().as_str() {
+    attributes.push(PathAttribute::NEXT_HOP(next_hop));
+    if let Some(origin) = route.origin {
+        let origin = match origin.to_lowercase().as_str() {
             "igp" => Origin::IGP,
             "egp" => Origin::EGP,
             "?" | "incomplete" => Origin::INCOMPLETE,
-            _ => Origin::INCOMPLETE,
-            // TODO: Raise on invalid Origin
-            // _ => Err(format!(
-            //     "Invalid Origin '{}'. Must be one of: IGP, EGP, ?",
-            //     origin
-            // )),
-        })
-        .unwrap_or(Origin::INCOMPLETE);
-    let as_path = ASPath { segments: vec![] };
-    //     segments: route.as_path.split(" ").iter().collect(),
-    // };
+            _ => return Err(format!("Not a valid origin: {}", origin)),
+        };
+        attributes.push(PathAttribute::ORIGIN(origin));
+    }
+    if let Some(local_pref) = route.local_pref {
+        attributes.push(PathAttribute::LOCAL_PREF(local_pref));
+    }
+    if let Some(med) = route.multi_exit_disc {
+        attributes.push(PathAttribute::MULTI_EXIT_DISC(med));
+    }
+    let as_path = {
+        let mut asns: Vec<u32> = Vec::with_capacity(route.as_path.len());
+        for asn in &route.as_path {
+            asns.push(
+                asn_from_dotted(asn).map_err(|err| format!("Error parsing ASN: {}", err.reason))?,
+            );
+        }
+        ASPath {
+            segments: vec![Segment::AS_SEQUENCE(asns)],
+        }
+    };
+    attributes.push(PathAttribute::AS_PATH(as_path));
+    let communities = {
+        let mut comms: Vec<Community> = Vec::with_capacity(route.communities.len());
+        for comm in route.communities {
+            comms.push(
+                Community::try_from(comm.as_str())
+                    .map_err(|err| format!("Error parsing ASN: {}", err))?,
+            );
+        }
+        CommunityList(comms)
+    };
+    let standard_communities = communities.standard();
+    if !standard_communities.is_empty() {
+        attributes.push(PathAttribute::COMMUNITY(standard_communities));
+    }
+    let extd_communities = communities.extended();
+    if !extd_communities.is_empty() {
+        attributes.push(PathAttribute::EXTENDED_COMMUNITIES(extd_communities));
+    }
 
-    let communities = CommunityList(vec![]);
-
-    let attributes = Arc::new(PathAttributes {
-        next_hop: Some(next_hop),
-        origin,
-        as_path,
-        local_pref: route.local_pref,
-        multi_exit_disc: route.multi_exit_disc,
-        communities,
-    });
-
-    Ok(StoredUpdate {
-        family: Family::new(prefix.protocol, SAFI::Unicast),
+    Ok((
         attributes,
-        nlri: NLRIEncoding::IP(prefix),
-    })
+        Family::new(prefix.protocol, SAFI::Unicast),
+        NLRIEncoding::IP(prefix),
+    ))
 }
