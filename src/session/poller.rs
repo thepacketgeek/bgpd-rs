@@ -113,17 +113,17 @@ impl Poller {
         &mut self,
     ) -> Result<Option<(TcpStream, Arc<PeerConfig>)>, io::Error> {
         let local_outbound_addr = self.tcp_listener.local_addr().expect("Has local address");
-        let listener = self
-            .tcp_listener
-            .accept()
-            .timeout(Duration::from_millis(TCP_INIT_TIMEOUT_MS.into()))
-            .fuse();
+        let listener = FutureExt::fuse(
+            self.tcp_listener
+                .accept()
+                .timeout(Duration::from_millis(TCP_INIT_TIMEOUT_MS.into())),
+        );
 
         // TODO: If DelayQueue.is_empty(), CPU spikes to 100%
         //       Look into returning a stream::pending() and remove
         //       insert() call in `new()`
-        let initializer = self.delay_queue.next().fuse();
-        let rescheduled_peers = self.rx.recv().fuse();
+        let initializer = FutureExt::fuse(self.delay_queue.next());
+        let rescheduled_peers = FutureExt::fuse(self.rx.recv());
         pin_mut!(listener, initializer, rescheduled_peers);
         select! {
             incoming = listener => {

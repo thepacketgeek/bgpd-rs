@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bgp_rs::{Message, Notification};
 use futures::future::FutureExt;
 use futures::{pin_mut, select};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch, Mutex};
 
@@ -71,7 +71,7 @@ impl SessionManager {
                         let protocol = MessageProtocol::new(stream, MessageCodec::new());
                         let new_session = Session::new(Arc::clone(&peer_config), protocol);
                         sessions.insert(remote_ip, new_session);
-                        debug!("New session started: {}", peer_config.remote_ip);
+                        info!("New session started: {}", peer_config.remote_ip);
                     }
                 })
                 .fuse()
