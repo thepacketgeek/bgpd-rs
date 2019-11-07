@@ -8,7 +8,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 
 #[derive(Debug)]
 pub struct ParseError {
-    reason: String,
+    pub reason: String,
 }
 
 impl ParseError {
@@ -69,17 +69,47 @@ pub fn as_u16_be(array: [u8; 2]) -> u16 {
     (u16::from(array[0]) << 8) + u16::from(array[1])
 }
 
-pub fn asn_to_dotted(asn: u32) -> String {
-    if asn < 65535 {
+/// Convert an ASN (4 byte) as dotted if it exceeds the 2-byte limit
+/// E.g. 42598400100 -> "65000.100"
+pub fn u32_to_dotted(asn: u32, sep: char) -> String {
+    if asn < std::u16::MAX as u32 {
         format!("{}", asn)
     } else {
         let bytes = transform_u32_to_bytes(asn);
         format!(
-            "{}.{}",
+            "{}{}{}",
             as_u16_be([bytes[0], bytes[1]]),
+            sep,
             as_u16_be([bytes[2], bytes[3]])
         )
     }
+}
+
+/// Convert an ASN string to a u32
+/// E.g. "65000.100" -> 42598400100
+pub fn asn_from_dotted(value: &str) -> std::result::Result<u32, ParseError> {
+    // Parse to list of u32, since we should support 4 byte aSN as a single int
+    // (E.g. "42598400100")
+    let mut chunks = [0; 2];
+    let check_for_overflow = value.contains('.');
+    // Iterate through chunks in reverse, so if there's no dot (only one number),
+    // it will be in the least significant position
+    for (i, chunk) in value
+        .splitn(2, '.')
+        .collect::<Vec<&str>>()
+        .into_iter()
+        .rev()
+        .enumerate()
+    {
+        let chunk: u32 = chunk
+            .parse()
+            .map_err(|err| ParseError::new(format!("{} '{}'", err, value)))?;
+        if check_for_overflow && chunk > std::u16::MAX as u32 {
+            return Err(ParseError::new(format!("Unsupported ASN '{}'", value)));
+        }
+        chunks[i] = chunk;
+    }
+    Ok((chunks[1] * 65536) + chunks[0])
 }
 
 pub fn as_path_to_string(as_path: &ASPath) -> String {
@@ -131,6 +161,15 @@ pub fn prefix_from_string(prefix: &str) -> std::result::Result<Prefix, ParseErro
     }
 }
 
+/// Convert first 16 bytes (1 IPv6 address) to IpAddr
+/// TODO: Handle multiple next hops
+///       Can they be variable length?
+pub fn bytes_to_ipv6(bytes: &Vec<u8>) -> IpAddr {
+    let mut buffer: [u8; 16] = [0; 16];
+    buffer[..16].clone_from_slice(&bytes[..16]);
+    IpAddr::from(buffer)
+}
+
 pub fn ext_community_to_display(value: u64) -> String {
     let c_type: u16 = ((value >> 48) & 0xff) as u16;
     match c_type {
@@ -138,7 +177,7 @@ pub fn ext_community_to_display(value: u64) -> String {
         0x0 => {
             let asn: u16 = ((value >> 32) & 0xffff) as u16;
             let community: u32 = (value & 0xffff_ffff) as u32;
-            format!("{}:{}", asn, asn_to_dotted(community))
+            format!("{}:{}", asn, u32_to_dotted(community, '.'))
         }
         // IPv4 Address Specific Extended Community (RFC 4360)
         0x1 => {
@@ -162,7 +201,7 @@ pub fn ext_community_to_display(value: u64) -> String {
         0x8 => {
             let asn: u16 = ((value >> 32) & 0xffff) as u16;
             let number: u32 = (value & 0xffff_ffff) as u32;
-            format!("redirect:{}:{}", asn, asn_to_dotted(number))
+            format!("redirect:{}:{}", asn, u32_to_dotted(number, '.'))
         }
         _ => format!("unknown:{}:{}", c_type, value),
     }
@@ -232,9 +271,20 @@ mod tests {
     }
 
     #[test]
-    fn test_asn_to_dotted() {
-        assert_eq!(asn_to_dotted(100), "100".to_string());
-        assert_eq!(asn_to_dotted(4259840100), "65000.100".to_string());
+    fn test_u32_to_dotted() {
+        assert_eq!(u32_to_dotted(100, '.'), "100".to_string());
+        assert_eq!(u32_to_dotted(4259840100, '.'), "65000.100".to_string());
+    }
+    #[test]
+    fn test_asn_from_dotted() {
+        dbg!(&std::u16::MAX);
+        assert_eq!(asn_from_dotted("100").unwrap(), 100);
+        assert_eq!(asn_from_dotted("65000.100").unwrap(), 4259840100);
+        assert_eq!(asn_from_dotted("4259840100").unwrap(), 4259840100);
+        assert!(asn_from_dotted("4259840100.200").is_err());
+        assert!(asn_from_dotted("200.4259840100").is_err());
+        assert!(asn_from_dotted("100.200300").is_err());
+        assert!(asn_from_dotted("test").is_err());
     }
 
     #[test]

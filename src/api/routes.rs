@@ -3,10 +3,10 @@ use std::sync::Arc;
 use bgp_rs::{FlowspecFilter, NLRIEncoding, Segment};
 use bgpd_rpc_lib::LearnedRoute;
 
-use crate::rib::Entry;
-use crate::utils::format_time_as_elapsed;
+use crate::rib::ExportEntry;
+use crate::utils::{format_time_as_elapsed, u32_to_dotted};
 
-pub fn entry_to_route(entry: Arc<Entry>) -> LearnedRoute {
+pub fn entry_to_route(entry: Arc<ExportEntry>) -> LearnedRoute {
     let prefix = {
         use NLRIEncoding::*;
         match &entry.update.nlri {
@@ -47,7 +47,7 @@ pub fn entry_to_route(entry: Arc<Entry>) -> LearnedRoute {
                     Segment::AS_SET(asns) => asns,
                 };
                 asns.iter()
-                    .map(std::string::ToString::to_string)
+                    .map(|asn| u32_to_dotted(*asn, '.'))
                     .collect::<Vec<String>>()
                     .join(" ")
             })

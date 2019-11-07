@@ -82,20 +82,27 @@ enum Advertise {
 #[derive(StructOpt, Debug)]
 #[structopt(rename_all = "kebab-case")]
 struct Route {
+    /// Prefix to advertise
     #[structopt()]
     prefix: String,
+    /// Next Hop for this route
     #[structopt()]
     next_hop: IpAddr,
-    // #[structopt(long)]
-    // peer: Option<IpAddr>,
-    #[structopt(long)]
+    /// Origin (defaults to Incomplete)
+    #[structopt(short, long)]
     origin: Option<String>,
-    #[structopt(long)]
+    /// AS Path (e.g. --as-path 100 200 65000.100), defaults to an empty path
+    #[structopt(short, long)]
     as_path: Option<String>,
-    #[structopt(long)]
+    /// Local Pref (defaults to 100)
+    #[structopt(short = "p", long)]
     local_pref: Option<u32>,
+    /// Multi-exit-discriminator
     #[structopt(long)]
     med: Option<u32>,
+    /// Communities (e.g. --communities 100 200 redirect:65000:100)
+    #[structopt(short, long)]
+    communities: Option<String>,
 }
 
 async fn run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -203,7 +210,25 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         },
         Command::Advertise(advertise) => match advertise {
             Advertise::Route(route) => {
-                let to_advertise = rpc::AdvertiseRoute::new(route.prefix, route.next_hop);
+                let mut to_advertise = rpc::AdvertiseRoute::new(route.prefix, route.next_hop);
+                if let Some(origin) = &route.origin {
+                    to_advertise.origin = Some(origin.to_string());
+                }
+                if let Some(local_pref) = &route.local_pref {
+                    to_advertise.local_pref = Some(*local_pref);
+                }
+                if let Some(med) = &route.med {
+                    to_advertise.multi_exit_disc = Some(*med);
+                }
+                if let Some(as_path) = &route.as_path {
+                    to_advertise.as_path = as_path.split(" ").map(|asn| asn.to_string()).collect();
+                }
+                if let Some(communities) = &route.communities {
+                    to_advertise.communities = communities
+                        .split(" ")
+                        .map(|comm| comm.to_string())
+                        .collect();
+                }
                 match rpc::Api::advertise_route(&mut client, to_advertise).await? {
                     Ok(advertised) => {
                         println!("Added route to RIB for announcement:");

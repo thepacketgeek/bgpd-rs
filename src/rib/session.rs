@@ -4,11 +4,11 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use log::error;
 
-use super::{Entry, Families};
+use super::{ExportEntry, Families};
 
 pub struct SessionRoutes {
     pub families: Families,
-    pub routes: HashMap<DateTime<Utc>, Arc<Entry>>,
+    pub routes: HashMap<DateTime<Utc>, Arc<ExportEntry>>,
     pending: HashSet<DateTime<Utc>>,
     advertised: HashSet<DateTime<Utc>>,
 }
@@ -23,7 +23,7 @@ impl SessionRoutes {
         }
     }
 
-    pub fn pending(&self) -> Vec<Arc<Entry>> {
+    pub fn pending(&self) -> Vec<Arc<ExportEntry>> {
         self.routes
             .iter()
             .filter(|(ts, _)| self.pending.contains(&ts))
@@ -31,7 +31,7 @@ impl SessionRoutes {
             .map(|(_, entry)| entry.clone())
             .collect()
     }
-    pub fn advertised(&self) -> Vec<Arc<Entry>> {
+    pub fn advertised(&self) -> Vec<Arc<ExportEntry>> {
         self.routes
             .iter()
             .filter(|(ts, _)| self.advertised.contains(&ts))
@@ -40,7 +40,7 @@ impl SessionRoutes {
             .collect()
     }
 
-    pub fn insert_routes(&mut self, entries: Vec<Arc<Entry>>) {
+    pub fn insert_routes(&mut self, entries: Vec<Arc<ExportEntry>>) {
         for entry in entries.into_iter() {
             let ts = entry.timestamp;
             // If this entry is not present, add to pending routes
@@ -50,7 +50,7 @@ impl SessionRoutes {
         }
     }
 
-    pub fn mark_advertised(&mut self, entry: &Arc<Entry>) {
+    pub fn mark_advertised(&mut self, entry: &Arc<ExportEntry>) {
         let ts = entry.timestamp;
         if !self.pending.remove(&ts) {
             error!("No route to remove: {}", ts);
