@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 use std::net::IpAddr;
 
 use bgpd_rpc_lib as rpc;
@@ -77,6 +78,8 @@ struct RouteOptions {
 enum Advertise {
     #[structopt()]
     Route(Route),
+    #[structopt()]
+    Flow(Flow),
 }
 
 #[derive(StructOpt, Debug)]
@@ -88,6 +91,35 @@ struct Route {
     /// Next Hop for this route
     #[structopt()]
     next_hop: IpAddr,
+    /// Origin (defaults to Incomplete)
+    #[structopt(short, long)]
+    origin: Option<String>,
+    /// AS Path (e.g. --as-path 100 200 65000.100), defaults to an empty path
+    #[structopt(short, long)]
+    as_path: Option<String>,
+    /// Local Pref (defaults to 100)
+    #[structopt(short = "p", long)]
+    local_pref: Option<u32>,
+    /// Multi-exit-discriminator
+    #[structopt(long)]
+    med: Option<u32>,
+    /// Communities (e.g. --communities 100 200 redirect:65000:100)
+    #[structopt(short, long)]
+    communities: Option<String>,
+}
+
+#[derive(StructOpt, Debug)]
+#[structopt(rename_all = "kebab-case")]
+struct Flow {
+    /// AFI [ipv6, ipv4]
+    #[structopt()]
+    family: String,
+    /// Flowspec action E.g. "redirect 6:302" or "traffic-rate 302"
+    #[structopt()]
+    action: FlowAction,
+    /// Origin (defaults to Incomplete)
+    #[structopt(short, long)]
+    matches: Vec<String>,
     /// Origin (defaults to Incomplete)
     #[structopt(short, long)]
     origin: Option<String>,
@@ -210,26 +242,27 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         },
         Command::Advertise(advertise) => match advertise {
             Advertise::Route(route) => {
-                let mut to_advertise = rpc::AdvertiseRoute::new(route.prefix, route.next_hop);
+                let mut spec = rpc::RouteSpec::new(route.prefix, route.next_hop);
                 if let Some(origin) = &route.origin {
-                    to_advertise.origin = Some(origin.to_string());
+                    spec.attributes.origin = Some(origin.to_string());
                 }
                 if let Some(local_pref) = &route.local_pref {
-                    to_advertise.local_pref = Some(*local_pref);
+                    spec.attributes.local_pref = Some(*local_pref);
                 }
                 if let Some(med) = &route.med {
-                    to_advertise.multi_exit_disc = Some(*med);
+                    spec.attributes.multi_exit_disc = Some(*med);
                 }
                 if let Some(as_path) = &route.as_path {
-                    to_advertise.as_path = as_path.split(" ").map(|asn| asn.to_string()).collect();
+                    spec.attributes.as_path =
+                        as_path.split(" ").map(|asn| asn.to_string()).collect();
                 }
                 if let Some(communities) = &route.communities {
-                    to_advertise.communities = communities
+                    spec.attributes.communities = communities
                         .split(" ")
                         .map(|comm| comm.to_string())
                         .collect();
                 }
-                match rpc::Api::advertise_route(&mut client, to_advertise).await? {
+                match rpc::Api::advertise_route(&mut client, spec).await? {
                     Ok(advertised) => {
                         println!("Added route to RIB for announcement:");
                         let mut table = table::OutputTable::new();
@@ -237,6 +270,46 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         table.print();
                     }
                     Err(err) => eprintln!("Error adding route: {}", err.to_string()),
+                }
+            }
+            Advertise::Flow(flow) => {
+                let afi = match flow.family.to_lowercase().as_str() {
+                    "ipv4" => 1,
+                    "ipv6" => 2,
+                    _ => {
+                        eprintln!("Invalid family, must be one of: [ipv4, ipv6]");
+                        return Ok(()); // TODO, return err
+                    }
+                };
+                let mut spec =
+                    rpc::FlowSpec::new(afi, flow.action.to_string(), flow.matches.clone());
+                if let Some(origin) = &flow.origin {
+                    spec.attributes.origin = Some(origin.to_string());
+                }
+                if let Some(local_pref) = &flow.local_pref {
+                    spec.attributes.local_pref = Some(*local_pref);
+                }
+                if let Some(med) = &flow.med {
+                    spec.attributes.multi_exit_disc = Some(*med);
+                }
+                if let Some(as_path) = &flow.as_path {
+                    spec.attributes.as_path =
+                        as_path.split(" ").map(|asn| asn.to_string()).collect();
+                }
+                if let Some(communities) = &flow.communities {
+                    spec.attributes.communities = communities
+                        .split(" ")
+                        .map(|comm| comm.to_string())
+                        .collect();
+                }
+                match rpc::Api::advertise_flow(&mut client, spec).await? {
+                    Ok(advertised) => {
+                        println!("Added flow to RIB for announcement:");
+                        let mut table = table::OutputTable::new();
+                        table.add_row(&LearnedRouteRow(advertised))?;
+                        table.print();
+                    }
+                    Err(err) => eprintln!("Error adding flow: {}", err.to_string()),
                 }
             }
         },

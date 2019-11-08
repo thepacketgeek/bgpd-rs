@@ -44,7 +44,7 @@ impl Session {
             .into_iter()
             .chain(peer.families.iter().map(|f| f.to_open_param()))
             .collect();
-        let session_rib = SessionRoutes::new(Families::new(peer.families.clone()));
+        let session_rib = SessionRoutes::new(Families::new(vec![]));
         Session {
             addr: protocol
                 .get_ref()
@@ -188,6 +188,7 @@ impl Session {
         let response = match message {
             Message::Open(open) => {
                 let (capabilities, hold_timer) = self.open_received(open)?;
+                self.routes.families = Families::from(&capabilities.MP_BGP_SUPPORT);
                 self.capabilities = capabilities;
                 self.hold_timer = HoldTimer::new(hold_timer);
                 match &self.state {
@@ -375,7 +376,7 @@ impl Session {
             },
             NLRIEncoding::FLOWSPEC(flowspec) => {
                 let mp_nlri = MPReachNLRI {
-                    afi: AFI::IPV6,
+                    afi: update.family.afi,
                     safi: SAFI::Flowspec,
                     next_hop: vec![],
                     announced_routes: vec![NLRIEncoding::FLOWSPEC(flowspec.to_vec())],

@@ -1,4 +1,4 @@
-use std::io::Error;
+use std::error::Error;
 use std::sync::Arc;
 
 use log::trace;
@@ -8,6 +8,7 @@ use tokio::sync::{watch, Mutex};
 use crate::config::ServerConfig;
 use crate::rib::RIB;
 use crate::session::{SessionManager, SessionUpdate};
+use crate::utils::{parse_flow_spec, parse_route_spec};
 
 pub struct Server {
     inner: Arc<State>,
@@ -23,11 +24,15 @@ impl Server {
         config: Arc<ServerConfig>,
         listener: TcpListener,
         config_rx: watch::Receiver<Arc<ServerConfig>>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, Box<dyn Error>> {
         let mut rib = RIB::new();
         for peer in config.peers.iter() {
             for route in peer.static_routes.iter() {
-                let (family, attributes, nlri) = route.parse()?;
+                let (family, attributes, nlri) = parse_route_spec(&route)?;
+                rib.insert_from_config(family, attributes, nlri);
+            }
+            for route in peer.static_flows.iter() {
+                let (family, attributes, nlri) = parse_flow_spec(&route)?;
                 rib.insert_from_config(family, attributes, nlri);
             }
         }
@@ -45,7 +50,7 @@ impl Server {
         self.inner.clone()
     }
 
-    pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         while let Ok(update) = self
             .inner
             .sessions

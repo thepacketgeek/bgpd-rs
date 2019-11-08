@@ -1,7 +1,7 @@
 #[allow(unused_variables)]
 use std::net::IpAddr;
 
-use serde::{Deserialize, Serialize};
+use serde::{self, Deserialize, Serialize};
 
 jsonrpsee::rpc_api! {
     pub Api {
@@ -9,7 +9,8 @@ jsonrpsee::rpc_api! {
         fn show_peer_detail() -> Vec<PeerDetail>;
         fn show_routes_learned(from_peer: Option<IpAddr>) -> Vec<LearnedRoute>;
         fn show_routes_advertised(to_peer: Option<IpAddr>) -> Vec<LearnedRoute>;
-        fn advertise_route(route: AdvertiseRoute) -> Result<LearnedRoute, String>;
+        fn advertise_route(route: RouteSpec) -> Result<LearnedRoute, String>;
+        fn advertise_flow(flow: FlowSpec) -> Result<LearnedRoute, String>;
     }
 }
 
@@ -58,30 +59,72 @@ pub struct LearnedRoute {
     pub communities: Vec<String>,
 }
 
-/// API Input for Route to advertise out to peers
-#[derive(Debug, Deserialize, Serialize)]
-pub struct AdvertiseRoute {
-    pub prefix: String,
-    pub next_hop: String,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SpecAttributes {
     pub origin: Option<String>,
+    #[serde(default = "Vec::new")]
     pub as_path: Vec<String>,
     pub local_pref: Option<u32>,
     pub multi_exit_disc: Option<u32>,
+    #[serde(default = "Vec::new")]
     pub communities: Vec<String>,
     // TODO: Accept some sort of Policy Object
     //       So that this can be targeted at peer(s)
 }
 
-impl AdvertiseRoute {
-    pub fn new(prefix: String, next_hop: IpAddr) -> Self {
+impl std::default::Default for SpecAttributes {
+    fn default() -> Self {
         Self {
-            prefix: prefix,
-            next_hop: next_hop.to_string(),
             origin: None,
             as_path: vec![],
             local_pref: None,
             multi_exit_disc: None,
             communities: vec![],
+        }
+    }
+}
+
+/// API Input for Route to advertise to peers
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RouteSpec {
+    /// Prefix to advertise (E.g. "100.1.0.0/16" or "2620:100:ab::/64")
+    pub prefix: String,
+    /// Next-hop to reach this prefix
+    pub next_hop: IpAddr,
+    #[serde(default = "SpecAttributes::default")]
+    pub attributes: SpecAttributes,
+}
+
+impl RouteSpec {
+    pub fn new(prefix: String, next_hop: IpAddr) -> Self {
+        Self {
+            prefix,
+            next_hop,
+            attributes: SpecAttributes::default(),
+        }
+    }
+}
+
+/// API Input for Route to advertise to peers
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct FlowSpec {
+    /// Primary address family (ipv4=1, ipv6=2)
+    pub afi: u16,
+    /// Flowspec action (redirect, traffic-rate, traffic-action, ...)
+    pub action: String,
+    /// Match rules (Src/Dst prefix, Src/Dst Port, TcpFlags, ...)
+    pub matches: Vec<String>,
+    #[serde(default = "SpecAttributes::default")]
+    pub attributes: SpecAttributes,
+}
+
+impl FlowSpec {
+    pub fn new(afi: u16, action: String, matches: Vec<String>) -> Self {
+        Self {
+            afi,
+            action,
+            matches,
+            attributes: SpecAttributes::default(),
         }
     }
 }

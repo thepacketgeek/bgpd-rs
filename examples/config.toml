@@ -17,6 +17,17 @@ families = [
     "ipv6 flow",
 ]
 passive = true              # If passive, bgpd won't attempt outbound connections
+[[peers.static_routes]]     # Static routes can be added
+prefix = "9.9.9.0/24"
+next_hop = "192.168.88.1"
+as_path = ["65000", "500"]
+communities = ["101", "202", "65000:99"]
+[[peers.static_flows]]      # And Static Flowspec rules
+afi = 1
+action = "redirect 6:302"
+matches= ["source 192.168.0.0/16", "destination-port 443"]
+as_path = ["65000", "500"]
+communities = ["101", "202", "65000:99"]
 
 [[peers]]
 remote_ip = "127.0.0.3"
@@ -24,9 +35,20 @@ dest_port = 1179
 remote_as = 65000
 local_as = 65000
 hold_timer = 30
-advertise_sources = [
+advertise_sources = [       # Default is API & Config, you can add peer advertisements
     "api", "peer", "config",
 ]
+[[peers.static_flows]]
+afi = 2
+action = "traffic-rate 24000"
+matches= [
+    "source 3001:100::/56",
+    "destination-port >8000 <=8080",
+    "packet-length >100",
+]
+as_path = ["65000", "500"]
+communities = ["101", "202", "65000:99"]
+
 
 [[peers]]
 remote_ip = "::2"

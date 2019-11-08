@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::net::{IpAddr, SocketAddr};
+use std::process;
 use std::sync::Arc;
 
 use env_logger::Builder;
@@ -78,6 +79,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
 
     // Start BGP Daemon
-    info!("Starting BGP daemon on {}...", socket);
+    info!("Starting BGPd [pid {}] on {}...", process::id(), socket);
     bgp_server.run().await
 }

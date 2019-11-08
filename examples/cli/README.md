@@ -102,6 +102,7 @@ IPv6 / Unicast
 
 ## Advertise
 
+### Unicast
 IPv4 Unicast
 ```
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise route 10.10.10.0/24 172.16.20.90 --local-pref 500
@@ -133,4 +134,36 @@ IPv6 / Unicast
 ----------------------------------------------------------------------------------------------------------------------------------
  ...
  172.16.20.2    3001:100:abcd::/64   3001:1::1           00:00:03  Incomplete                                            00:00:03
+```
+
+### Flowspec
+```
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise flow ipv4 'traffic-rate 100' -m 'source 192.168.10.0/24'
+Added flow to RIB for announcement:
+ Received From  Prefix               Next Hop  Age       Origin      Local Pref  Metric  AS Path  Communities            Age
+----------------------------------------------------------------------------------------------------------------------------------
+ Config         Src 192.168.10.0/24            00:00:00  Incomplete                               traffic-rate:0:100bps  00:00:00
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise flow ipv6 'redirect 100:200' -m 'destination 3001:10:20::/64'
+Added flow to RIB for announcement:
+ Received From  Prefix               Next Hop  Age       Origin      Local Pref  Metric  AS Path  Communities       Age
+-----------------------------------------------------------------------------------------------------------------------------
+ Config         Dst 3001:10:20::/64            00:00:00  Incomplete                               redirect:100:200  00:00:00
+ ```
+
+ ```
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli  show routes learned
+IPv4 / Flowspec
+ Received From  Prefix              Next Hop  Age       Origin      Local Pref  Metric  AS Path  Communities     Age
+--------------------------------------------------------------------------------------------------------------------------
+ Config         Src 192.168.0.0/16            00:01:55  Incomplete                               redirect:6:302  00:01:55
+
+IPv6 / Flowspec
+ Received From  Prefix                    Next Hop  Age       Origin      Local Pref  Metric  AS Path  Communities              Age
+-----------------------------------------------------------------------------------------------------------------------------------------
+ 127.0.0.2      Dst 3001:99:b::10/128               00:01:24  IGP                             200      traffic-rate:0:500bps    00:01:24
+                Src 3001:99:a::10/128
+ Config         Src 3001:100::/56                   00:01:55  Incomplete                               traffic-rate:0:24000bps  00:01:55
+                DstPort >8000, && <=8080
+                Packet Length >100
+
 ```

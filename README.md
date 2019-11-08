@@ -15,12 +15,14 @@ BGP service daemon built in Rust (nightly)
 - [x] Receive and respond to Keepalives (on hold time based interval)
 - [x] Process UPDATE messages, store in RIB
 - [x] Config reloading for Peer status (enable, passive, etc.)
+  - [ ] Update static route advertisements mid-session
 - [x] CLI interface for viewing peer status, routes, etc.
 - [x] Advertise routes to peers (specified from API and/or Config) 
 - [x] API/CLI interface for interacting with BGPd
+- [x] Flowspec Support
 - [ ] Route Policy for filtering of learned & advertised routes
-- [~] Flowspec Support (Still need API & Config specs)
-- [ ] Smarter RIB for processing large NLRI datasets
+- [ ] Route Refresh
+- [ ] Neighbor MD5 Authentication
 
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
@@ -46,6 +48,17 @@ families = [                # Define the families this session should support
 [[peers.static_routes]]
   prefix = "3001:100::/64"
   next_hop = "3001:1::1"
+[[peers.static_flows]]     # Add static Flowspec rules too!
+afi = 2
+action = "traffic-rate 24000"
+matches= [
+    "source 3001:100::/56",
+    "destination-port >8000 <=8080",
+    "packet-length >100",
+]
+as_path = ["65000", "500"]
+communities = ["101", "202", "65000:99"]
+
 
 [[peers]]
 remote_ip = "::2"
@@ -60,12 +73,13 @@ families = [
 You can send the BGPd process a `SIGHUP` to reload and update peer configs. The following items can be updated:
 
 ## Peers
-- Enabled/Disabled
-- *Active polling for new session
+- Added & removed
+- Enabled/disabled
+- Active/passive polling for idle peers
 - *Hold Timer
 - *Supported Families
 
- > * When not in an active session only
+ > * When not in an active session only, since these are negotiated in the OPEN
 
 
 # View BGPd Information

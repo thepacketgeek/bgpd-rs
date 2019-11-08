@@ -1,11 +1,13 @@
 mod file;
 
-pub use file::{AdvertiseSource, RouteSpec};
+pub use file::AdvertiseSource;
 
 use std::collections::HashSet;
 use std::io::Result;
 use std::net::IpAddr;
 use std::sync::Arc;
+
+use bgpd_rpc_lib::{FlowSpec, RouteSpec};
 
 use crate::rib::Family;
 
@@ -38,6 +40,7 @@ pub struct PeerConfig {
     pub families: Vec<Family>,
     pub advertise_sources: HashSet<AdvertiseSource>,
     pub static_routes: Vec<RouteSpec>,
+    pub static_flows: Vec<FlowSpec>,
 }
 
 impl PeerConfig {
@@ -65,6 +68,7 @@ impl ServerConfig {
                     families: p.families.clone(),
                     advertise_sources: p.advertise_sources.clone().into_iter().collect(),
                     static_routes: p.static_routes.clone().into_iter().collect(),
+                    static_flows: p.static_flows.clone().into_iter().collect(),
                 })
             })
             .collect();

@@ -120,6 +120,18 @@ impl From<Families> for HashSet<(AFI, SAFI)> {
     }
 }
 
+impl From<&HashSet<(AFI, SAFI)>> for Families {
+    fn from(mp_fams: &HashSet<(AFI, SAFI)>) -> Self {
+        Self::new(
+            mp_fams
+                .iter()
+                .cloned()
+                .map(|f| Family::new(f.0, f.1))
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

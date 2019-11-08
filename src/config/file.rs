@@ -1,15 +1,14 @@
-use std::convert::TryFrom;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::net::IpAddr;
 
-use bgp_rs::{ASPath, NLRIEncoding, Origin, PathAttribute, Segment, AFI, SAFI};
+use bgp_rs::{AFI, SAFI};
+use bgpd_rpc_lib::{FlowSpec, RouteSpec};
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use toml;
 
-use crate::rib::{Community, CommunityList, Family};
-use crate::utils::{asn_from_dotted, prefix_from_string};
+use crate::rib::Family;
 
 struct Defaults {}
 
@@ -84,6 +83,9 @@ pub(super) struct PeerConfigSpec {
     // Static routes to advertise to peer (if enabled in advertise_sources)
     #[serde(default = "Vec::new")]
     pub(super) static_routes: Vec<RouteSpec>,
+    // Static Flowspec rules to advertise to peer (if enabled in advertise_sources)
+    #[serde(default = "Vec::new")]
+    pub(super) static_flows: Vec<FlowSpec>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,82 +108,6 @@ impl ServerConfigSpec {
         file.read_to_string(&mut contents)?;
         let config: ServerConfigSpec = toml::from_str(&contents).unwrap();
         Ok(config)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct RouteSpec {
-    pub prefix: String,
-    pub next_hop: IpAddr,
-    pub origin: Option<String>,
-    pub local_pref: Option<u32>,
-    pub med: Option<u32>,
-    #[serde(default = "Vec::new")]
-    pub as_path: Vec<String>,
-    #[serde(default = "Vec::new")]
-    pub communities: Vec<String>,
-}
-
-impl RouteSpec {
-    pub fn parse(&self) -> Result<(Family, Vec<PathAttribute>, NLRIEncoding), io::Error> {
-        let prefix = prefix_from_string(&self.prefix)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
-        let mut attributes = vec![
-            PathAttribute::NEXT_HOP(self.next_hop),
-            PathAttribute::ORIGIN(
-                self.origin
-                    .as_ref()
-                    .map(|o| match o.to_lowercase().as_str() {
-                        "igp" => Origin::IGP,
-                        "egp" => Origin::EGP,
-                        _ => Origin::INCOMPLETE,
-                    })
-                    .unwrap_or(Origin::INCOMPLETE),
-            ),
-        ];
-        if let Some(local_pref) = self.local_pref {
-            attributes.push(PathAttribute::LOCAL_PREF(local_pref));
-        }
-        if let Some(med) = self.med {
-            attributes.push(PathAttribute::MULTI_EXIT_DISC(med));
-        }
-
-        let as_path = {
-            let mut asns: Vec<u32> = Vec::with_capacity(self.as_path.len());
-            for asn in &self.as_path {
-                asns.push(asn_from_dotted(asn).map_err(|err| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("Error parsing ASN: {}", err.reason),
-                    )
-                })?);
-            }
-            ASPath {
-                segments: vec![Segment::AS_SEQUENCE(asns)],
-            }
-        };
-        attributes.push(PathAttribute::AS_PATH(as_path));
-        let communities = {
-            let mut comms: Vec<Community> = Vec::with_capacity(self.communities.len());
-            for comm in &self.communities {
-                comms.push(Community::try_from(comm.as_str())?);
-            }
-            CommunityList(comms)
-        };
-        let standard_communities = communities.standard();
-        if !standard_communities.is_empty() {
-            attributes.push(PathAttribute::COMMUNITY(standard_communities));
-        }
-        let extd_communities = communities.extended();
-        if !extd_communities.is_empty() {
-            attributes.push(PathAttribute::EXTENDED_COMMUNITIES(extd_communities));
-        }
-
-        Ok((
-            Family::new(prefix.protocol, SAFI::Unicast),
-            attributes,
-            NLRIEncoding::IP(prefix),
-        ))
     }
 }
 
