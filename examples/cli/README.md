@@ -7,7 +7,8 @@ This is an example CLI that uses the BGPd API to interact with a running instanc
 - [x] View learned routes (with source)
 - [x] View advertised routes
 - [x] Advertise IPv4/IPv6 Unicast routes (More attribute support coming soon)
-- [ ] Advertise IPv4/IPv6 Flowspec flows
+- [x] Advertise IPv4/IPv6 Flowspec flows
+- [ ] Filter learned/advertised routes (prefix, peer, attributes, ...)
 - [ ] Enable/disable Peers
 
 
