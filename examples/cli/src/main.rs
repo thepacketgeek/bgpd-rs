@@ -116,7 +116,7 @@ struct Flow {
     family: String,
     /// Flowspec action E.g. "redirect 6:302" or "traffic-rate 302"
     #[structopt()]
-    action: FlowAction,
+    action: String,
     /// Origin (defaults to Incomplete)
     #[structopt(short, long)]
     matches: Vec<String>,
