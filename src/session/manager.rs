@@ -139,7 +139,7 @@ impl SessionManager {
                             _ => (),
                         }
                         warn!("{}", err);
-                        self.poller_tx.try_send(session.peer.clone()).unwrap();
+                        self.poller_tx.send(session.peer.clone()).unwrap();
                         ended_sessions.push(*remote_ip);
                     }
                 }
@@ -198,7 +198,7 @@ impl SessionManager {
                     }
 
                     for (_, new_peer) in added_peers {
-                        self.poller_tx.try_send(new_peer.clone()).unwrap();
+                        self.poller_tx.send(new_peer.clone()).unwrap();
                     }
                 }
                 Ok(None)

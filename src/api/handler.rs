@@ -15,7 +15,7 @@ use crate::utils::{parse_flow_spec, parse_route_spec};
 pub async fn serve(socket: SocketAddr, state: Arc<State>) {
     info!("Starting JSON-RPC server on {}...", socket);
     tokio::spawn(async move {
-        let mut server = jsonrpsee::http_server(&socket).await.unwrap();
+        let mut server = jsonrpsee::http_raw_server(&socket).await.unwrap();
 
         while let Ok(request) = Api::next_request(&mut server).await {
             match request {

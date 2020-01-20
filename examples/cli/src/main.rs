@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::fmt;
 use std::net::IpAddr;
 
 use bgpd_rpc_lib as rpc;
@@ -140,7 +139,7 @@ struct Flow {
 async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     let mut client = {
         let base = format!("http://{}:{}", args.host, args.port);
-        jsonrpsee::http_client(&base)
+        jsonrpsee::http_raw_client(&base)
     };
     match args.cmd {
         Command::Show(show) => match show {

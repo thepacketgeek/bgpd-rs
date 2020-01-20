@@ -3,9 +3,9 @@ use std::result::Result;
 
 use bgp_rs::{Message, Reader};
 use byteorder::{NetworkEndian, ReadBytesExt};
-use bytes::{BufMut, BytesMut};
+use bytes::{buf::ext::BufMutExt, Buf, BytesMut};
 use tokio::net::TcpStream;
-use tokio_codec::{Decoder, Encoder, Framed};
+use tokio_util::codec::{Decoder, Encoder, Framed};
 use twoway::find_bytes;
 
 pub type MessageProtocol = Framed<TcpStream, MessageCodec>;

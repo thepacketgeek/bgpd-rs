@@ -9,8 +9,9 @@ use bgp_rs::{
     PathAttribute, Segment, Update, AFI, SAFI,
 };
 use chrono::{DateTime, Utc};
+use futures::{SinkExt, StreamExt};
 use log::{debug, trace, warn};
-use tokio::prelude::*;
+use tokio::time::{timeout, Duration};
 
 use super::codec::MessageProtocol;
 use super::{HoldTimer, MessageCounts};
@@ -107,14 +108,8 @@ impl Session {
             }
             self.update_state(SessionState::OpenSent);
         }
-        let protocol_poll = self
-            .protocol
-            .next()
-            // TODO: Select in Manager?
-            .timeout(std::time::Duration::from_millis(250))
-            .await;
-
-        match protocol_poll {
+        // TODO: Select in Manager?
+        match timeout(Duration::from_millis(250), self.protocol.next()).await {
             // Framed stream is exhausted, remote side closed connection
             Ok(None) => {
                 return Err(SessionError::Other(format!(

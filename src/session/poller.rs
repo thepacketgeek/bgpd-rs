@@ -3,17 +3,14 @@ use std::fmt;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-use futures::future::FutureExt;
-use futures::{pin_mut, select};
+use futures::{pin_mut, select, FutureExt, StreamExt};
 use log::{debug, trace, warn};
 use net2::TcpBuilder;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
+// use tokio::prelude::*;
 use tokio::sync::mpsc;
-use tokio::timer::DelayQueue;
-use tokio_net::driver::Handle;
+use tokio::time::{timeout, DelayQueue, Duration, Instant};
 
 use crate::config::PeerConfig;
 
@@ -48,16 +45,14 @@ impl IdlePeer {
     ) -> Result<(TcpStream, Arc<PeerConfig>), io::Error> {
         let peer_addr = SocketAddr::new(self.0.remote_ip, self.0.dest_port);
         let builder = match peer_addr {
-            SocketAddr::V4(_) => TcpBuilder::new_v4().unwrap(),
-            SocketAddr::V6(_) => TcpBuilder::new_v6().unwrap(),
+            SocketAddr::V4(_) => TcpBuilder::new_v4()?,
+            SocketAddr::V6(_) => TcpBuilder::new_v6()?,
         };
         builder.reuse_address(true)?;
         builder.bind(source_addr)?;
-        let handle = &Handle::default();
-        let connect = TcpStream::connect_std(builder.to_tcp_stream().unwrap(), &peer_addr, handle)
-            .timeout(Duration::from_millis(TCP_INIT_TIMEOUT_MS.into()));
+        let connect = TcpStream::connect_std(builder.to_tcp_stream()?, &peer_addr);
 
-        match connect.await? {
+        match timeout(Duration::from_millis(TCP_INIT_TIMEOUT_MS.into()), connect).await? {
             Ok(stream) => Ok((stream, self.0.clone())),
             Err(err) => Err(err),
         }
@@ -86,7 +81,7 @@ impl Poller {
         // Add an empty IP in a year so delay_queue is never empty
         delay_queue.insert_at(
             IpAddr::from(Ipv4Addr::new(0, 0, 0, 0)),
-            Instant::now() + Duration::from_secs(31536000),
+            Instant::now() + Duration::from_secs(31_536_000),
         );
         Self {
             idle_peers: HashMap::new(),
@@ -113,11 +108,10 @@ impl Poller {
         &mut self,
     ) -> Result<Option<(TcpStream, Arc<PeerConfig>)>, io::Error> {
         let local_outbound_addr = self.tcp_listener.local_addr().expect("Has local address");
-        let listener = FutureExt::fuse(
-            self.tcp_listener
-                .accept()
-                .timeout(Duration::from_millis(TCP_INIT_TIMEOUT_MS.into())),
-        );
+        let listener = FutureExt::fuse(timeout(
+            Duration::from_millis(TCP_INIT_TIMEOUT_MS.into()),
+            self.tcp_listener.accept(),
+        ));
 
         // TODO: If DelayQueue.is_empty(), CPU spikes to 100%
         //       Look into returning a stream::pending() and remove

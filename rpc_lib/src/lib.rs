@@ -1,4 +1,4 @@
-#[allow(unused_variables)]
+#![allow(unused_variables)]
 use std::net::IpAddr;
 
 use serde::{self, Deserialize, Serialize};
