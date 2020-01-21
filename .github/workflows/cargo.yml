@@ -14,23 +14,11 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@master
-    - name: Install latest nightly
-      uses: actions-rs/toolchain@v1
-      with:
-          toolchain: nightly
-          override: true
-
+    - uses: actions/checkout@v1
     - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-
+      run: cargo build --verbose
     - name: Run tests
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
+      run: cargo test --verbose
 
 

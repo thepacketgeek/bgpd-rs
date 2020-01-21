@@ -53,30 +53,8 @@ impl SessionManager {
         &mut self,
         rib: Arc<Mutex<RIB>>,
     ) -> Result<Option<SessionUpdate>, Box<dyn Error>> {
-        let receive_new_sessions = {
-            let sessions_clone = Arc::clone(&self.sessions);
-            self.idle_peers
-                .get_connection()
-                .then(async move |connection| {
-                    if let Ok(Some((stream, peer_config))) = connection {
-                        let mut sessions = sessions_clone.lock().await;
-                        let remote_ip = peer_config.remote_ip;
-                        if sessions.contains_key(&remote_ip) {
-                            warn!(
-                                "Unexpected connection from {}: Already have an existing session",
-                                remote_ip,
-                            );
-                            return;
-                        }
-                        let protocol = MessageProtocol::new(stream, MessageCodec::new());
-                        let new_session = Session::new(Arc::clone(&peer_config), protocol);
-                        sessions.insert(remote_ip, new_session);
-                        info!("New session started: {}", peer_config.remote_ip);
-                    }
-                })
-                .fuse()
-        };
-
+        let sessions_clone = Arc::clone(&self.sessions);
+        let receive_new_sessions = self.idle_peers.get_connection().fuse();
         let config_updates = self.config_watch.recv().fuse();
 
         // TODO: Figure out how to select_all over sessions
@@ -155,7 +133,24 @@ impl SessionManager {
 
         pin_mut!(receive_new_sessions, config_updates);
         select! {
-            new = receive_new_sessions => Ok(None),
+            new_connection = receive_new_sessions => {
+                if let Ok(Some((stream, peer_config))) = new_connection {
+                    let mut sessions = sessions_clone.lock().await;
+                    let remote_ip = peer_config.remote_ip;
+                    if sessions.contains_key(&remote_ip) {
+                        warn!(
+                            "Unexpected connection from {}: Already have an existing session",
+                            remote_ip,
+                        );
+                        return Ok(None);
+                    }
+                    let protocol = MessageProtocol::new(stream, MessageCodec::new());
+                    let new_session = Session::new(Arc::clone(&peer_config), protocol);
+                    sessions.insert(remote_ip, new_session);
+                    info!("New session started: {}", peer_config.remote_ip);
+                }
+                Ok(None)
+            },
             update = config_updates => {
                 if let Some(new_config) = update {
                     self.config = new_config.clone();
@@ -206,3 +201,10 @@ impl SessionManager {
         }
     }
 }
+
+// async fn init_connection(
+//     sessions: Arc<Mutex<HashMap<IpAddr, Session>>>,
+//     connection: Result<(TcpStream, PeerConfig)>,
+// ) {
+
+// }

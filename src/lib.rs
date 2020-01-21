@@ -1,7 +1,4 @@
-#![recursion_limit = "384"]
-// Used for the select! macros
-#![feature(async_closure)]
-#![feature(drain_filter)]
+#![recursion_limit = "512"] // Needed for the select! macros
 
 pub mod api;
 pub mod config;

@@ -201,20 +201,22 @@ impl RIB {
         });
     }
 
+    /// Remove all learned NLRI from a given peer
     pub fn remove_from_peer(&mut self, peer: IpAddr) {
         let total: usize = self
             .entries
             .values_mut()
             .map(|entries| {
-                entries
-                    .drain_filter(|e| e.source == EntrySource::Peer(peer))
-                    .count()
+                let pre = entries.len();
+                entries.retain(|e| e.source != EntrySource::Peer(peer));
+                pre - entries.len()
             })
             .sum();
         self.cleanup();
         debug!("Removed {} routes from RIB for {}", total, peer);
     }
 
+    /// Remove matching learned NLRI from a given peer
     pub fn withdraw_peer_nlri(&mut self, peer: IpAddr, withdrawn: Vec<&NLRIEncoding>) {
         // TODO: Optimize this, possibly with an index of IP -> PA Group mapping?
         let mut total = 0usize;
@@ -223,9 +225,9 @@ impl RIB {
                 .entries
                 .values_mut()
                 .map(|entries| {
-                    entries
-                        .drain_filter(|e| e.source == EntrySource::Peer(peer) && &e.nlri == nlri)
-                        .count()
+                    let pre = entries.len();
+                    entries.retain(|e| !(e.source == EntrySource::Peer(peer) && &e.nlri == nlri));
+                    pre - entries.len()
                 })
                 .sum::<usize>();
         }
