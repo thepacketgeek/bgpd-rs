@@ -1,6 +1,6 @@
 # BGPd-rs
 
-BGP service daemon built in Rust (nightly)
+BGP service daemon built in Rust
 [![Actions Status](https://github.com/thepacketgeek/bgpd-rs/workflows/cargo/badge.svg)](https://github.com/thepacketgeek/bgpd-rs/actions)
 
  > Totally just a Proof-of-concept, mostly for my own amusement and learning
@@ -177,18 +177,18 @@ And then running `bgpd` as follows:
 
 Using IPv6
 ```
-$ cargo +nightly run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
+$ cargo run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
 ```
-$ cargo +nightly run -- -d -p 1179 ./examples/config.toml -vv
+$ cargo run -- -d -p 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
 ```
-$ cargo +nightly build
+$ cargo build
 $ sudo ./targets/debug/bgpd ./examples/config.toml -vv
 ```
 

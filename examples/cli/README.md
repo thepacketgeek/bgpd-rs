@@ -19,7 +19,7 @@ Use `bgpd-cli` for viewing peer & route information:
 
 Peer summary:
 ```
-[~/bgpd-rs/examples/cli] $ cargo +nightly run -- show neighbors
+[~/bgpd-rs/examples/cli] $ cargo run -- show neighbors
  Neighbor     Router ID    AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
 ----------------------------------------------------------------------------------
  127.0.0.2    2.2.2.2      100    76       70       00:11:27  Established  4
@@ -59,7 +59,7 @@ BGP neighbor is 172.16.20.2,  remote AS 65000, local AS 65000
 
 Learned routes:
 ```
-[~/bgpd-rs/examples/cli] $ cargo +nightly build
+[~/bgpd-rs/examples/cli] $ cargo build
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes learned
 IPv4 / Unicast
  Received From  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities           Age
