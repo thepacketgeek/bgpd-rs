@@ -27,7 +27,7 @@ impl SessionRoutes {
         self.routes
             .iter()
             .filter(|(ts, _)| self.pending.contains(&ts))
-            .filter(|(_, entry)| self.families.contains(&entry.update.family))
+            .filter(|(_, entry)| self.families.contains(entry.update.family))
             .map(|(_, entry)| entry.clone())
             .collect()
     }
@@ -35,7 +35,7 @@ impl SessionRoutes {
         self.routes
             .iter()
             .filter(|(ts, _)| self.advertised.contains(&ts))
-            .filter(|(_, entry)| self.families.contains(&entry.update.family))
+            .filter(|(_, entry)| self.families.contains(entry.update.family))
             .map(|(_, entry)| entry.clone())
             .collect()
     }
@@ -44,7 +44,7 @@ impl SessionRoutes {
         for entry in entries.into_iter() {
             let ts = entry.timestamp;
             // If this entry is not present, add to pending routes
-            if let None = self.routes.insert(ts, entry) {
+            if self.routes.insert(ts, entry).is_none() {
                 self.pending.insert(ts);
             }
         }

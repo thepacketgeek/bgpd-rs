@@ -45,7 +45,7 @@ pub fn peer_to_detail(
         .unwrap_or_else(|| config.families.iter().map(|f| f.to_string()).collect());
     PeerDetail {
         summary: peer_to_summary(config.clone(), session, prefixes_received),
-        capabilities: capabilities,
+        capabilities,
         hold_timer: session
             .map(|s| s.hold_timer.hold_timer)
             .unwrap_or(config.hold_timer),

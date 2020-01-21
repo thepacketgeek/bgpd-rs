@@ -23,12 +23,12 @@ impl PathAttributeCache {
         hash
     }
 
-    pub fn get(&self, key: &u64) -> Option<&PathAttributeGroup> {
+    pub fn get(&self, key: u64) -> Option<&PathAttributeGroup> {
         self.0.get(&key)
     }
 
     /// Cleanup a PathAttributeGroup with no more associated entries
-    pub(super) fn remove(&mut self, key: &u64) {
+    pub(super) fn remove(&mut self, key: u64) {
         self.0.remove(&key);
     }
 }
@@ -46,7 +46,7 @@ impl PathAttributeGroup {
         )
     }
 
-    pub fn get(&self, identifier: &Identifier) -> Option<&PathAttribute> {
+    pub fn get(&self, identifier: Identifier) -> Option<&PathAttribute> {
         self.0.get(&identifier)
     }
 
@@ -80,7 +80,7 @@ pub struct PathAttributes {
 impl PathAttributes {
     pub fn from_group(group: &PathAttributeGroup) -> Self {
         let origin = group
-            .get(&Identifier::ORIGIN)
+            .get(Identifier::ORIGIN)
             .map(|attr| match attr {
                 PathAttribute::ORIGIN(origin) => origin.clone(),
                 _ => unreachable!(),
@@ -88,7 +88,7 @@ impl PathAttributes {
             .unwrap_or(Origin::INCOMPLETE);
         let next_hop = group
             // Check for IPv6 first in MPReachNLRI
-            .get(&Identifier::MP_REACH_NLRI)
+            .get(Identifier::MP_REACH_NLRI)
             .map(|attr| match attr {
                 PathAttribute::MP_REACH_NLRI(nlri) => {
                     if (nlri.afi, nlri.safi) == (AFI::IPV6, SAFI::Unicast) {
@@ -101,34 +101,34 @@ impl PathAttributes {
             })
             // Fallback to IPv4:Unicast
             .unwrap_or_else(|| {
-                group.get(&Identifier::NEXT_HOP).map(|attr| match attr {
+                group.get(Identifier::NEXT_HOP).map(|attr| match attr {
                     PathAttribute::NEXT_HOP(next_hop) => *next_hop,
                     _ => unreachable!(),
                 })
             });
         let as_path = group
-            .get(&Identifier::AS_PATH)
+            .get(Identifier::AS_PATH)
             .map(|attr| match attr {
                 PathAttribute::AS_PATH(as_path) => as_path.clone(),
                 _ => unreachable!(),
             })
             .unwrap_or_else(|| ASPath { segments: vec![] });
         let local_pref = group
-            .get(&Identifier::LOCAL_PREF)
+            .get(Identifier::LOCAL_PREF)
             .map(|attr| match attr {
                 PathAttribute::LOCAL_PREF(local_pref) => Some(*local_pref),
                 _ => unreachable!(),
             })
             .unwrap_or(None);
         let multi_exit_disc = group
-            .get(&Identifier::MULTI_EXIT_DISC)
+            .get(Identifier::MULTI_EXIT_DISC)
             .map(|attr| match attr {
                 PathAttribute::MULTI_EXIT_DISC(metric) => Some(*metric),
                 _ => unreachable!(),
             })
             .unwrap_or(None);
         let communities = group
-            .get(&Identifier::COMMUNITY)
+            .get(Identifier::COMMUNITY)
             .map(|attr| match attr {
                 PathAttribute::COMMUNITY(communities) => communities
                     .iter()
@@ -139,7 +139,7 @@ impl PathAttributes {
             .unwrap_or_else(|| vec![]);
 
         let ext_communities = group
-            .get(&Identifier::EXTENDED_COMMUNITIES)
+            .get(Identifier::EXTENDED_COMMUNITIES)
             .map(|attr| match attr {
                 PathAttribute::EXTENDED_COMMUNITIES(communities) => communities
                     .iter()

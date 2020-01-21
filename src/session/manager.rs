@@ -46,7 +46,7 @@ impl SessionManager {
     }
 
     pub fn get_peer_configs(&self) -> Vec<Arc<PeerConfig>> {
-        self.config.peers.iter().map(|p| p.clone()).collect()
+        self.config.peers.to_vec()
     }
 
     pub async fn get_update(

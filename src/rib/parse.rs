@@ -10,7 +10,7 @@ pub fn parse_update(
     let mut family = Family::new(AFI::IPV4, SAFI::Unicast); // BGP4 default
 
     let nlri: Vec<NLRIEncoding> = if !update.announced_routes.is_empty() {
-        update.announced_routes.clone()
+        update.announced_routes
     } else if let Some(mp_reach_nlri) = update.get(Identifier::MP_REACH_NLRI) {
         match mp_reach_nlri {
             PathAttribute::MP_REACH_NLRI(nlri) => {
@@ -20,7 +20,7 @@ pub fn parse_update(
                         "Invalid Next-hop on MPReachNLRI",
                     )));
                 }
-                nlri.announced_routes.iter().cloned().collect::<Vec<_>>()
+                nlri.announced_routes.to_vec()
             }
             _ => unreachable!(),
         }

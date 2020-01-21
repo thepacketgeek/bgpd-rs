@@ -198,7 +198,7 @@ impl Session {
                     }
                     _ => {
                         return Err(SessionError::FiniteStateMachine(fsm_err_for_state(
-                            &self.state,
+                            self.state,
                         )));
                     }
                 }
@@ -252,7 +252,7 @@ impl Session {
             received_open.parameters.len()
         );
         self.router_id = router_id;
-        let received_capabilities = Capabilities::from_parameters(received_open.parameters.clone());
+        let received_capabilities = Capabilities::from_parameters(received_open.parameters);
         let common_capabilities = self.capabilities.common(&received_capabilities)?;
         Ok((common_capabilities, hold_timer))
     }
@@ -291,11 +291,10 @@ impl Session {
         let mut attributes: Vec<PathAttribute> = Vec::with_capacity(4);
         // Well-known, Mandatory Attributes
         attributes.push(PathAttribute::ORIGIN(update.attributes.origin.clone()));
-        if let (AFI::IPV4, SAFI::Unicast) = (&update.family).into() {
-            update
-                .attributes
-                .next_hop
-                .map(|next_hop| attributes.push(PathAttribute::NEXT_HOP(next_hop)));
+        if let ((AFI::IPV4, SAFI::Unicast), Some(next_hop)) =
+            ((&update.family).into(), update.attributes.next_hop)
+        {
+            attributes.push(PathAttribute::NEXT_HOP(next_hop));
         }
         attributes.push(PathAttribute::LOCAL_PREF(
             update.attributes.local_pref.unwrap_or(100),
@@ -329,10 +328,9 @@ impl Session {
         attributes.push(PathAttribute::AS_PATH(as_path));
 
         // Optional Attributes
-        update
-            .attributes
-            .multi_exit_disc
-            .map(|med| attributes.push(PathAttribute::MULTI_EXIT_DISC(med)));
+        if let Some(med) = update.attributes.multi_exit_disc {
+            attributes.push(PathAttribute::MULTI_EXIT_DISC(med));
+        }
 
         let standard_communities = update.attributes.communities.standard();
         if !standard_communities.is_empty() {
@@ -406,7 +404,7 @@ pub enum MessageResponse {
     Empty,
 }
 
-fn fsm_err_for_state(state: &SessionState) -> u8 {
+fn fsm_err_for_state(state: SessionState) -> u8 {
     use SessionState::*;
     match state {
         OpenSent => 1,
@@ -429,8 +427,7 @@ fn asn_from_open(open: &Open) -> u32 {
             OpenCapability::FourByteASN(asn) => Some(asn),
             _ => None,
         })
-        .filter(|c| c.is_some())
-        .next()
+        .find(|c| c.is_some())
         .unwrap_or_else(|| Some(u32::from(open.peer_asn)))
         .unwrap()
 }

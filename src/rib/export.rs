@@ -36,7 +36,7 @@ impl From<(&RibEntry, Arc<PathAttributes>)> for ExportEntry {
             source: entry.source,
             update: ExportedUpdate {
                 family: entry.family,
-                attributes: attributes.clone(),
+                attributes,
                 nlri: entry.nlri.clone(),
             },
         }

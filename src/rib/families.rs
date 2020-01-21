@@ -22,7 +22,7 @@ impl Family {
         Self { afi, safi }
     }
 
-    pub fn to_open_param(&self) -> OpenCapability {
+    pub fn to_open_param(self) -> OpenCapability {
         OpenCapability::MultiProtocol((self.afi, self.safi))
     }
 }
@@ -100,7 +100,7 @@ impl Families {
         Self(self.0.intersection(&other.0).cloned().collect())
     }
 
-    pub fn contains(&self, family: &Family) -> bool {
+    pub fn contains(&self, family: Family) -> bool {
         self.0.contains(&family)
     }
 

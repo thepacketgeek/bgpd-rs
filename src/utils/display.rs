@@ -33,7 +33,7 @@ pub fn u32_to_dotted(asn: u32, sep: char) -> String {
 /// Convert first 16 bytes (1 IPv6 address) to IpAddr
 /// TODO: Handle multiple next hops
 ///       Can they be variable length?
-pub fn bytes_to_ipv6(bytes: &Vec<u8>) -> IpAddr {
+pub fn bytes_to_ipv6(bytes: &[u8]) -> IpAddr {
     let mut buffer: [u8; 16] = [0; 16];
     buffer[..16].clone_from_slice(&bytes[..16]);
     IpAddr::from(buffer)

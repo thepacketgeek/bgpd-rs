@@ -75,12 +75,16 @@ impl RIB {
         self.entries.values().map(|v| v.len()).sum()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     pub fn get_routes(&self) -> Vec<Arc<ExportEntry>> {
         self.entries
             .iter()
             .map(|(group_key, entries)| {
                 let attributes = {
-                    let group = self.cache.get(&group_key).expect("Cached PAs exist");
+                    let group = self.cache.get(*group_key).expect("Cached PAs exist");
                     Arc::new(PathAttributes::from_group(&group))
                 };
                 entries
@@ -100,10 +104,10 @@ impl RIB {
             .filter(|(_, e)| e.source == EntrySource::Peer(peer))
             .map(|(group_key, e)| {
                 let attributes = {
-                    let group = self.cache.get(&group_key).expect("Cached PAs exist");
+                    let group = self.cache.get(*group_key).expect("Cached PAs exist");
                     Arc::new(PathAttributes::from_group(&group))
                 };
-                Arc::new((e, attributes.clone()).into())
+                Arc::new((e, attributes).into())
             })
             .collect()
     }
@@ -119,10 +123,10 @@ impl RIB {
             .filter(|(_, e)| e.source != EntrySource::Peer(peer))
             .map(|(group_key, e)| {
                 let attributes = {
-                    let group = self.cache.get(&group_key).expect("Cached PAs exist");
+                    let group = self.cache.get(*group_key).expect("Cached PAs exist");
                     Arc::new(PathAttributes::from_group(&group))
                 };
-                Arc::new((e, attributes.clone()).into())
+                Arc::new((e, attributes).into())
             })
             .collect()
     }
@@ -147,7 +151,7 @@ impl RIB {
         let entry = self
             .entries
             .entry(group_key)
-            .or_insert(Vec::with_capacity(nlri.len()));
+            .or_insert_with(|| Vec::with_capacity(nlri.len()));
         entry.extend(nlri.into_iter().map(|nlri| RibEntry {
             source: EntrySource::Peer(peer),
             family,
@@ -167,7 +171,7 @@ impl RIB {
         let entry = self
             .entries
             .entry(group_key)
-            .or_insert(Vec::with_capacity(1));
+            .or_insert_with(|| Vec::with_capacity(1));
         entry.push(RibEntry {
             source: EntrySource::Config,
             family,
@@ -176,10 +180,10 @@ impl RIB {
         });
         let e = entry.last().expect("Pushed entry exists");
         let attributes = {
-            let group = self.cache.get(&group_key).expect("Cached PAs exist");
+            let group = self.cache.get(group_key).expect("Cached PAs exist");
             Arc::new(PathAttributes::from_group(&group))
         };
-        Arc::new((e, attributes.clone()).into())
+        Arc::new((e, attributes).into())
     }
 
     pub fn insert_from_config(
@@ -192,7 +196,7 @@ impl RIB {
         let entry = self
             .entries
             .entry(group_key)
-            .or_insert(Vec::with_capacity(1));
+            .or_insert_with(|| Vec::with_capacity(1));
         entry.push(RibEntry {
             source: EntrySource::Config,
             family,
@@ -247,8 +251,14 @@ impl RIB {
                 true
             }
         });
-        for empty in empty_groups {
-            self.cache.remove(&empty);
+        for empty_id in empty_groups {
+            self.cache.remove(empty_id);
         }
+    }
+}
+
+impl std::default::Default for RIB {
+    fn default() -> Self {
+        Self::new()
     }
 }

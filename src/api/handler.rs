@@ -75,10 +75,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     } else {
                         rib.get_routes()
                     };
-                    let routes: Vec<_> = entries
-                        .into_iter()
-                        .map(|entry| entry_to_route(entry))
-                        .collect();
+                    let routes: Vec<_> = entries.into_iter().map(entry_to_route).collect();
                     output.extend(routes);
                     respond.ok(output).await;
                 }

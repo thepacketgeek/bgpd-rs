@@ -17,7 +17,7 @@ chrono = { version = "0.4.7", features = ["serde"] }
 env_logger = "0.6.1"
 itertools = "^0.8.1"
 jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", default-features = false, features = ["http"] }
-futures = { version = "0.3" }
+futures = { version = "^0.3" }
 log = "0.4.6"
 net2 = "0.2.33"
 serde = { version = "1.0", features = ["derive"] }
