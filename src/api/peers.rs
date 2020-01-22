@@ -5,7 +5,7 @@ use bgpd_rpc_lib::{PeerDetail, PeerSummary};
 
 use crate::config::PeerConfig;
 use crate::session::{Session, SessionState};
-use crate::utils::format_time_as_elapsed;
+use crate::utils::{format_time_as_elapsed, get_host_address};
 
 pub fn peer_to_summary(
     config: Arc<PeerConfig>,
@@ -13,9 +13,13 @@ pub fn peer_to_summary(
     prefixes_received: Option<u64>,
 ) -> PeerSummary {
     PeerSummary {
-        peer: session
-            .map(|s| s.addr.to_string())
-            .unwrap_or_else(|| config.remote_ip.to_string()),
+        peer: session.map(|s| s.addr.to_string()).unwrap_or_else(|| {
+            if let Some(addr) = get_host_address(&config.remote_ip) {
+                addr.to_string()
+            } else {
+                config.remote_ip.to_string()
+            }
+        }),
         enabled: config.enabled,
         router_id: session.map(|s| s.router_id),
         remote_asn: config.remote_as,

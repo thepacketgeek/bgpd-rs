@@ -119,7 +119,7 @@ impl SessionManager {
                             _ => (),
                         }
                         warn!("{}", err);
-                        self.poller_tx.send(session.peer.clone()).unwrap();
+                        self.poller_tx.send(session.config.clone()).unwrap();
                         ended_sessions.push(*remote_ip);
                     }
                 }
@@ -148,8 +148,8 @@ impl SessionManager {
                     }
                     let protocol = MessageProtocol::new(stream, MessageCodec::new());
                     let new_session = Session::new(Arc::clone(&peer_config), protocol);
+                    info!("New session started: {}", remote_ip);
                     sessions.insert(remote_ip, new_session);
-                    info!("New session started: {}", peer_config.remote_ip);
                 }
                 Ok(None)
             },
