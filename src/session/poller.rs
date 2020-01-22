@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use futures::{pin_mut, select, FutureExt, StreamExt};
-use ipnetwork::{IpNetwork, NetworkSize};
+use ipnetwork::IpNetwork;
 use log::{debug, trace, warn};
 use net2::TcpBuilder;
 use tokio::net::{TcpListener, TcpStream};
@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 use tokio::time::{timeout, DelayQueue, Duration, Instant};
 
 use crate::config::PeerConfig;
+use crate::utils::get_host_address;
 
 const TCP_INIT_TIMEOUT_MS: u16 = 1000;
 
@@ -29,18 +30,6 @@ impl IdlePeer {
 
     pub fn get_config(&self) -> Arc<PeerConfig> {
         Arc::clone(&self.0)
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.0.enabled
-    }
-
-    pub fn is_passive(&self) -> bool {
-        self.0.passive
-    }
-
-    pub fn matches_addr(&self, addr: IpAddr) -> bool {
-        self.0.remote_ip.contains(addr)
     }
 
     async fn connect(
@@ -114,14 +103,6 @@ impl Poller {
         }
     }
 
-    fn get_config_for_peer(&self, peer: IpAddr) -> Option<Arc<PeerConfig>> {
-        if let Some(network) = self.idle_peers.keys().find(|n| n.contains(peer)) {
-            self.idle_peers.get(&network).map(|c| c.get_config())
-        } else {
-            None
-        }
-    }
-
     pub async fn get_connection(
         &mut self,
     ) -> Result<Option<(TcpStream, Arc<PeerConfig>)>, io::Error> {
@@ -140,7 +121,7 @@ impl Poller {
         select! {
             incoming = listener => {
                 if let Ok(Ok((stream, socket))) = incoming {
-                    if let Some(config) = self.get_config_for_peer(socket.ip()) {
+                    if let Some(config) = get_config_for_peer(&self.idle_peers, socket.ip()) {
                         if config.enabled {
                             let peer = self.idle_peers.remove(&config.remote_ip).expect("Idle peer exists");
                             debug!("Incoming new connection from {}", socket.ip());
@@ -161,7 +142,7 @@ impl Poller {
                     trace!("Poller outbound triggered for {}", addr);
                     // Peer may not be present if an incoming connection
                     // was established simultaneously
-                    if let Some(config) = self.get_config_for_peer(addr) {
+                    if let Some(config) = get_config_for_peer(&self.idle_peers, addr) {
                         if config.enabled && !config.passive {
                             let peer = self.idle_peers.remove(&config.remote_ip).expect("Idle peer exists");
                             match peer.connect(SocketAddr::new(local_outbound_addr.ip(), 0u16)).await {
@@ -197,15 +178,12 @@ impl fmt::Display for Poller {
     }
 }
 
-// Determine if a given IPNetwork is for a single host
-// If so, return the IpAddr
-fn get_host_address(network: &IpNetwork) -> Option<IpAddr> {
-    let is_host = match network.size() {
-        NetworkSize::V4(size) => size == 1,
-        NetworkSize::V6(size) => size == 1,
-    };
-    if is_host {
-        Some(network.ip())
+fn get_config_for_peer(
+    idle_peers: &HashMap<IpNetwork, IdlePeer>,
+    peer: IpAddr,
+) -> Option<Arc<PeerConfig>> {
+    if let Some(network) = idle_peers.keys().find(|n| n.contains(peer)) {
+        idle_peers.get(&network).map(|c| c.get_config())
     } else {
         None
     }

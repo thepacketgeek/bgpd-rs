@@ -53,7 +53,11 @@ impl Session {
                 .expect("Stream has remote IP")
                 .ip(),
             state: SessionState::Connect,
-            router_id: peer.remote_ip,
+            router_id: protocol
+                .get_ref()
+                .peer_addr()
+                .expect("Protocol has remote peer")
+                .ip(),
             peer,
             protocol,
             connect_time: Utc::now(),

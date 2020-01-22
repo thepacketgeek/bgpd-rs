@@ -10,7 +10,7 @@ use crate::rib::EntrySource;
 
 use super::peers::{peer_to_detail, peer_to_summary};
 use super::routes::entry_to_route;
-use crate::utils::{parse_flow_spec, parse_route_spec};
+use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 
 pub async fn serve(socket: SocketAddr, state: Arc<State>) {
     info!("Starting JSON-RPC server on {}...", socket);
@@ -27,17 +27,21 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     let rib = state.rib.lock().await;
                     let peer_info = peers
                         .into_iter()
-                        .map(|config| {
-                            let session = active_sessions.get(&config.remote_ip);
-                            let pfx_rcvd = {
-                                if let Some(session) = session {
-                                    let routes = rib.get_routes_from_peer(session.peer.remote_ip);
-                                    Some(routes.len() as u64)
-                                } else {
-                                    None
-                                }
-                            };
-                            peer_to_summary(config, session, pfx_rcvd)
+                        .filter_map(|config| {
+                            if let Some(remote_ip) = get_host_address(&config.remote_ip) {
+                                let session = active_sessions.get(&remote_ip);
+                                let pfx_rcvd = {
+                                    if let Some(session) = session {
+                                        let routes = rib.get_routes_from_peer(session.addr);
+                                        Some(routes.len() as u64)
+                                    } else {
+                                        None
+                                    }
+                                };
+                                Some(peer_to_summary(config, session, pfx_rcvd))
+                            } else {
+                                None
+                            }
                         })
                         .collect::<Vec<PeerSummary>>();
                     output.extend(peer_info);
@@ -52,17 +56,22 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     let peer_info = peers
                         .into_iter()
                         .map(|config| {
-                            let session = active_sessions.get(&config.remote_ip);
-                            let pfx_rcvd = {
-                                if let Some(session) = session {
-                                    let routes = rib.get_routes_from_peer(session.addr);
-                                    Some(routes.len() as u64)
-                                } else {
-                                    None
-                                }
-                            };
-                            peer_to_detail(config, session, pfx_rcvd)
+                            if let Some(remote_ip) = get_host_address(&config.remote_ip) {
+                                let session = active_sessions.get(&remote_ip);
+                                let pfx_rcvd = {
+                                    if let Some(session) = session {
+                                        let routes = rib.get_routes_from_peer(session.addr);
+                                        Some(routes.len() as u64)
+                                    } else {
+                                        None
+                                    }
+                                };
+                                Some(peer_to_detail(config, session, pfx_rcvd))
+                            } else {
+                                None
+                            }
                         })
+                        .filter_map(|p| p.map(|c| c))
                         .collect::<Vec<PeerDetail>>();
                     output.extend(peer_info);
                     respond.ok(output).await;

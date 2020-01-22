@@ -13,7 +13,9 @@ pub fn peer_to_summary(
     prefixes_received: Option<u64>,
 ) -> PeerSummary {
     PeerSummary {
-        peer: session.map(|s| s.addr).unwrap_or(config.remote_ip),
+        peer: session
+            .map(|s| s.addr.to_string())
+            .unwrap_or_else(|| config.remote_ip.to_string()),
         enabled: config.enabled,
         router_id: session.map(|s| s.router_id),
         remote_asn: config.remote_as,

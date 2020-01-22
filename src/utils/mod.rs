@@ -3,8 +3,6 @@ pub use display::*;
 mod parse;
 pub use parse::*;
 
-use bgp_rs::Message;
-
 pub fn transform_u8_to_bytes(x: u8) -> [u8; 1] {
     let b1: u8 = x as u8;
     [b1]

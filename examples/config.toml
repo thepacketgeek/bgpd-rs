@@ -4,7 +4,7 @@ poll_interval = 5
 
 
 [[peers]]
-remote_ip = "127.0.0.2"
+remote_ip = "127.0.0.0/30"
 dest_port = 1179
 remote_as = 65000
 local_as = 65000
@@ -30,11 +30,15 @@ as_path = ["65000", "500"]
 communities = ["101", "202", "65000:99"]
 
 [[peers]]
-remote_ip = "127.0.0.3"
+remote_ip = "::2"
 dest_port = 1179
 remote_as = 65000
 local_as = 65000
-hold_timer = 30
+families = [
+    "ipv6 unicast",
+    "ipv6 flow",
+]
+passive = true
 advertise_sources = [       # Default is API & Config, you can add peer advertisements
     "api", "peer", "config",
 ]
@@ -48,15 +52,3 @@ matches= [
 ]
 as_path = ["65000", "500"]
 communities = ["101", "202", "65000:99"]
-
-
-[[peers]]
-remote_ip = "::2"
-dest_port = 1179
-remote_as = 65000
-local_as = 65000
-families = [
-    "ipv6 unicast",
-    "ipv6 flow",
-]
-passive = true

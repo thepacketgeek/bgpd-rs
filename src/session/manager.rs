@@ -6,6 +6,7 @@ use std::sync::Arc;
 use bgp_rs::{Message, Notification};
 use futures::future::FutureExt;
 use futures::{pin_mut, select};
+use ipnetwork::IpNetwork;
 use log::{debug, info, warn};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch, Mutex};
@@ -14,6 +15,7 @@ use super::codec::{MessageCodec, MessageProtocol};
 use super::{Poller, PollerTx, Session, SessionError, SessionUpdate};
 use crate::config::{PeerConfig, ServerConfig};
 use crate::rib::RIB;
+use crate::utils::get_host_address;
 
 pub struct SessionManager {
     pub(crate) idle_peers: Poller,
@@ -136,7 +138,7 @@ impl SessionManager {
             new_connection = receive_new_sessions => {
                 if let Ok(Some((stream, peer_config))) = new_connection {
                     let mut sessions = sessions_clone.lock().await;
-                    let remote_ip = peer_config.remote_ip;
+                    let remote_ip = stream.peer_addr().expect("Stream has remote peer").ip();
                     if sessions.contains_key(&remote_ip) {
                         warn!(
                             "Unexpected connection from {}: Already have an existing session",
@@ -153,48 +155,57 @@ impl SessionManager {
             },
             update = config_updates => {
                 if let Some(new_config) = update {
-                    self.config = new_config.clone();
-                    let mut current_sessions = self.sessions.lock().await;
-                    for peer_config in &new_config.peers {
-                        if let Some(active_session) = current_sessions.get_mut(&peer_config.remote_ip) {
-                            active_session.update_config(peer_config.clone());
-                        }
-                    }
-                    let config_peers: HashMap<IpAddr, Arc<PeerConfig>> = new_config
-                        .peers
-                        .iter()
-                        .map(|p| (p.remote_ip, p.clone()))
-                        .collect();
-                    let added_peers: Vec<_> = config_peers
-                        .iter()
-                        .filter(|(ip, _)| !current_sessions.contains_key(&ip))
-                        .collect();
-                    let removed_peers: Vec<_> = current_sessions
-                        .iter()
-                        .filter(|(ip, _)| !config_peers.contains_key(&ip))
-                        .map(|(ip, _)| ip.clone())
-                        .collect();
+                    // self.config = new_config.clone();
+                    // let mut current_sessions = self.sessions.lock().await;
+                    // // Update the config in any active sessions
+                    // for peer_config in &new_config.peers {
+                    //     if let Some(peer_addr) = get_host_address(&peer_config.remote_ip) {
+                    //         if let Some(active_session) = current_sessions.get_mut(&peer_addr) {
+                    //             active_session.update_config(peer_config.clone());
+                    //         }
+                    //     }
+                    // }
+                    // let config_peers: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
+                    //     .peers
+                    //     .iter()
+                    //     .map(|p| (p.remote_ip, p.clone()))
+                    //     .collect();
+                    // let added_peers: Vec<_> = config_peers
+                    //     .iter()
+                    //     .filter(|(network, _)| {
+                    //         if let Some(addr) = get_host_address(*network) {
+                    //             !current_sessions.contains_key(&addr)
+                    //         } else {
+                    //             false
+                    //         }
+                    //     })
+                    //     .collect();
+                    // let removed_peers: Vec<_> = current_sessions
+                    //     .iter()
+                    //     .filter(|(ip, _)| !config_peers.contains_key(IpNetwork::new(ip)))
+                    //     .map(|(ip, _)| ip.clone())
+                    //     .collect();
 
-                    debug!(
-                        "Received config [{} added peers, {} removed peers]",
-                        added_peers.len(),
-                        removed_peers.len()
-                    );
+                    // debug!(
+                    //     "Received config [{} added peer configs, {} removed peer configs]",
+                    //     added_peers.len(),
+                    //     removed_peers.len()
+                    // );
 
-                    for removed_ip in removed_peers {
-                        warn!("Session ended with {}, peer de-configured", removed_ip);
-                        let mut session = current_sessions.remove(&removed_ip).expect("Active session");
-                        let notif = Notification {
-                            major_err_code: 6, // Cease
-                            minor_err_code: 3, // Deconfigured
-                            data: vec![],
-                        };
-                        session.send_message(Message::Notification(notif)).await?;
-                    }
+                    // for removed_ip in removed_peers {
+                    //     warn!("Session ended with {}, peer de-configured", removed_ip);
+                    //     let mut session = current_sessions.remove(&removed_ip).expect("Active session");
+                    //     let notif = Notification {
+                    //         major_err_code: 6, // Cease
+                    //         minor_err_code: 3, // Deconfigured
+                    //         data: vec![],
+                    //     };
+                    //     session.send_message(Message::Notification(notif)).await?;
+                    // }
 
-                    for (_, new_peer) in added_peers {
-                        self.poller_tx.send(new_peer.clone()).unwrap();
-                    }
+                    // for (_, new_peer) in added_peers {
+                    //     self.poller_tx.send(new_peer.clone()).unwrap();
+                    // }
                 }
                 Ok(None)
             }
