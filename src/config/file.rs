@@ -5,6 +5,7 @@ use std::net::IpAddr;
 
 use bgp_rs::{AFI, SAFI};
 use bgpd_rpc_lib::{FlowSpec, RouteSpec};
+use ipnetwork::IpNetwork;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use toml;
 
@@ -49,7 +50,7 @@ impl Defaults {
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct PeerConfigSpec {
     // Peer connection details
-    pub(super) remote_ip: IpAddr,
+    pub(super) remote_ip: IpNetwork,
     pub(super) remote_as: u32,
     // Local connection details
     pub(super) local_as: Option<u32>,

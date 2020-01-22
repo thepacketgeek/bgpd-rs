@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use futures::{pin_mut, select, FutureExt, StreamExt};
 use log::{debug, trace, warn};
+use ipnetwork::IpNetwork;
 use net2::TcpBuilder;
 use tokio::net::{TcpListener, TcpStream};
 // use tokio::prelude::*;
@@ -68,11 +69,11 @@ impl fmt::Display for IdlePeer {
 /// Stores Idle peers and checks every interval if there are peers that the Handler
 /// can attempt to connect to
 pub struct Poller {
-    idle_peers: HashMap<IpAddr, IdlePeer>,
+    idle_peers: HashMap<IpNetwork, IdlePeer>,
     tcp_listener: TcpListener,
     rx: PollerRx,
     interval: Duration,
-    delay_queue: DelayQueue<IpAddr>,
+    delay_queue: DelayQueue<IpNetwork>,
 }
 
 impl Poller {
@@ -80,7 +81,7 @@ impl Poller {
         let mut delay_queue = DelayQueue::with_capacity(4);
         // Add an empty IP in a year so delay_queue is never empty
         delay_queue.insert_at(
-            IpAddr::from(Ipv4Addr::new(0, 0, 0, 0)),
+            IpAddr::from(IpNetwork::V4(IpAddr::new(0, 0, 0, 0))),
             Instant::now() + Duration::from_secs(31_536_000),
         );
         Self {
@@ -93,15 +94,17 @@ impl Poller {
     }
 
     pub fn upsert_peer(&mut self, config: Arc<PeerConfig>) {
-        let addr = config.remote_ip;
+        let network = config.remote_ip;
 
         if let Some(_existing_peer) = self
             .idle_peers
             .insert(config.remote_ip, IdlePeer::new(config))
         {
-            debug!("Peer config for {} updated", addr);
+            debug!("Peer config for {} updated", network);
         }
-        self.delay_queue.insert(addr, self.interval);
+        if network.size() == 1 {
+            self.delay_queue.insert(addr, self.interval);
+        }
     }
 
     pub async fn get_connection(
