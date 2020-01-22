@@ -7,8 +7,8 @@ use std::io::Result;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use ipnetwork::IpNetwork;
 use bgpd_rpc_lib::{FlowSpec, RouteSpec};
+use ipnetwork::IpNetwork;
 
 use crate::rib::Family;
 
