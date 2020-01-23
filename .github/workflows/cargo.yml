@@ -3,11 +3,10 @@ name: cargo
 on:
   push:
     branches:
-    - master
-    - *
+    - '*'
   pull_request:
     branches:
-    - master
+    - '*'
   schedule:
     - cron: 0 5 * * 1,5
 
