@@ -125,9 +125,19 @@ impl Poller {
                 if let Ok(Ok((stream, socket))) = incoming {
                     if let Some(config) = get_config_for_peer(&self.idle_peers, socket.ip()) {
                         if config.enabled {
-                            let peer = self.idle_peers.remove(&config.remote_ip).expect("Idle peer exists");
+                            let config = if get_host_address(&config.remote_ip).is_some() {
+                                // Only remove from idle peers if this a for a single peer
+                                self.idle_peers.remove(&config.remote_ip)
+                                    .expect("Idle peer exists")
+                                    .get_config()
+                            } else {
+                                self.idle_peers.get(&config.remote_ip)
+                                    .expect("Idle peer exists")
+                                    .get_config()
+
+                            };
                             debug!("Incoming new connection from {}", socket.ip());
-                            return Ok(Some((stream, peer.get_config())));
+                            return Ok(Some((stream, config)));
                         }
                     } else {
                         warn!(
