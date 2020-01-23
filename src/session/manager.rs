@@ -15,7 +15,6 @@ use super::codec::{MessageCodec, MessageProtocol};
 use super::{Poller, PollerTx, Session, SessionError, SessionUpdate};
 use crate::config::{PeerConfig, ServerConfig};
 use crate::rib::RIB;
-use crate::utils::get_host_address;
 
 pub struct SessionManager {
     pub(crate) idle_peers: Poller,
@@ -35,7 +34,7 @@ impl SessionManager {
         let (poller_tx, poller_rx) = mpsc::unbounded_channel();
         let mut poller = Poller::new(listener, config.poll_interval.into(), poller_rx);
         for peer_config in config.peers.iter() {
-            poller.upsert_peer(peer_config.clone());
+            poller.upsert_config(peer_config.clone());
         }
 
         Self {
@@ -155,67 +154,48 @@ impl SessionManager {
             },
             update = config_updates => {
                 if let Some(new_config) = update {
-                    // self.config = new_config.clone();
-                    // let mut current_sessions = self.sessions.lock().await;
-                    // // Update the config in any active sessions
-                    // for peer_config in &new_config.peers {
-                    //     if let Some(peer_addr) = get_host_address(&peer_config.remote_ip) {
-                    //         if let Some(active_session) = current_sessions.get_mut(&peer_addr) {
-                    //             active_session.update_config(peer_config.clone());
-                    //         }
-                    //     }
-                    // }
-                    // let config_peers: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
-                    //     .peers
-                    //     .iter()
-                    //     .map(|p| (p.remote_ip, p.clone()))
-                    //     .collect();
-                    // let added_peers: Vec<_> = config_peers
-                    //     .iter()
-                    //     .filter(|(network, _)| {
-                    //         if let Some(addr) = get_host_address(*network) {
-                    //             !current_sessions.contains_key(&addr)
-                    //         } else {
-                    //             false
-                    //         }
-                    //     })
-                    //     .collect();
-                    // let removed_peers: Vec<_> = current_sessions
-                    //     .iter()
-                    //     .filter(|(ip, _)| !config_peers.contains_key(IpNetwork::new(ip)))
-                    //     .map(|(ip, _)| ip.clone())
-                    //     .collect();
+                    self.config = new_config.clone();
+                    let configs_by_network: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
+                        .peers
+                        .iter()
+                        .map(|p| (p.remote_ip, p.clone()))
+                        .collect();
+                    { // Current Sessions lock scope
+                        let mut current_sessions = self.sessions.lock().await;
+                        let mut removed_peers: Vec<IpAddr> = vec![];
+                        for (addr, mut current_session) in current_sessions.iter_mut() {
+                            if let Some(network) = configs_by_network.keys().find(|n| n.contains(*addr)) {
+                                let config = configs_by_network.get(network).expect("Network has config");
+                                current_session.update_config(config.clone());
+                            } else {
+                                removed_peers.push(*addr);
+                            }
+                        }
 
-                    // debug!(
-                    //     "Received config [{} added peer configs, {} removed peer configs]",
-                    //     added_peers.len(),
-                    //     removed_peers.len()
-                    // );
+                        debug!(
+                            "Received config [{} peer configs, {} removed peer configs]",
+                            configs_by_network.len(),
+                            removed_peers.len()
+                        );
 
-                    // for removed_ip in removed_peers {
-                    //     warn!("Session ended with {}, peer de-configured", removed_ip);
-                    //     let mut session = current_sessions.remove(&removed_ip).expect("Active session");
-                    //     let notif = Notification {
-                    //         major_err_code: 6, // Cease
-                    //         minor_err_code: 3, // Deconfigured
-                    //         data: vec![],
-                    //     };
-                    //     session.send_message(Message::Notification(notif)).await?;
-                    // }
+                        for removed_ip in removed_peers {
+                            warn!("Session ended with {}, peer de-configured", removed_ip);
+                            let mut session = current_sessions.remove(&removed_ip).expect("Active session");
+                            let notif = Notification {
+                                major_err_code: 6, // Cease
+                                minor_err_code: 3, // Deconfigured
+                                data: vec![],
+                            };
+                            session.send_message(Message::Notification(notif)).await?;
+                        }
+                    }
 
-                    // for (_, new_peer) in added_peers {
-                    //     self.poller_tx.send(new_peer.clone()).unwrap();
-                    // }
+                    for (_, new_config) in configs_by_network {
+                        self.poller_tx.send(new_config.clone())?;
+                    }
                 }
                 Ok(None)
             }
         }
     }
 }
-
-// async fn init_connection(
-//     sessions: Arc<Mutex<HashMap<IpAddr, Session>>>,
-//     connection: Result<(TcpStream, PeerConfig)>,
-// ) {
-
-// }

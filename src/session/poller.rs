@@ -89,16 +89,18 @@ impl Poller {
         }
     }
 
-    pub fn upsert_peer(&mut self, config: Arc<PeerConfig>) {
+    pub fn upsert_config(&mut self, config: Arc<PeerConfig>) {
         let network = config.remote_ip;
 
-        if let Some(_existing_peer) = self
+        if self
             .idle_peers
             .insert(config.remote_ip, IdlePeer::new(config))
+            .is_some()
         {
             debug!("Peer config for {} updated", network);
-        }
-        if let Some(remote_ip) = get_host_address(&network) {
+        } else if let Some(remote_ip) = get_host_address(&network) {
+            // Add to outgoing connection queue if there was no existing config
+            // and if it's a single host
             self.delay_queue.insert(remote_ip, self.interval);
         }
     }
