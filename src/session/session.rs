@@ -5,8 +5,8 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use bgp_rs::{
-    ASPath, Capabilities, MPReachNLRI, Message, NLRIEncoding, Open, OpenCapability, OpenParameter,
-    PathAttribute, Segment, Update, AFI, SAFI,
+    ASPath, Capabilities, MPReachNLRI, Message, NLRIEncoding, Notification, Open, OpenCapability,
+    OpenParameter, PathAttribute, Segment, Update, AFI, SAFI,
 };
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, StreamExt};
@@ -235,6 +235,15 @@ impl Session {
         self.counts.increment_sent();
         self.hold_timer.sent();
         Ok(())
+    }
+
+    pub async fn notify(&mut self, maj: u8, min: u8) -> Result<(), io::Error> {
+        let notif = Notification {
+            major_err_code: maj,
+            minor_err_code: min,
+            data: vec![],
+        };
+        self.send_message(Message::Notification(notif)).await
     }
 
     pub fn open_received(

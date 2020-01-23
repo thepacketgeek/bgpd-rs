@@ -3,7 +3,6 @@ use std::error::Error;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use bgp_rs::{Message, Notification};
 use futures::future::FutureExt;
 use futures::{pin_mut, select};
 use ipnetwork::IpNetwork;
@@ -84,36 +83,16 @@ impl SessionManager {
                     Err(err) => {
                         match err {
                             SessionError::Deconfigured => {
-                                let notif = Notification {
-                                    major_err_code: 6,
-                                    minor_err_code: 3,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(6, 3).await?;
                             }
                             SessionError::HoldTimeExpired(_) => {
-                                let notif = Notification {
-                                    major_err_code: 4,
-                                    minor_err_code: 0,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(4, 0).await?;
                             }
                             SessionError::FiniteStateMachine(minor) => {
-                                let notif = Notification {
-                                    major_err_code: 5,
-                                    minor_err_code: minor,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(5, minor).await?;
                             }
                             SessionError::OpenAsnMismatch(_, _) => {
-                                let notif = Notification {
-                                    major_err_code: 3,
-                                    minor_err_code: 2,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(3, 2).await?;
                             }
                             _ => (),
                         }
@@ -181,12 +160,7 @@ impl SessionManager {
                         for removed_ip in removed_peers {
                             warn!("Session ended with {}, peer de-configured", removed_ip);
                             let mut session = current_sessions.remove(&removed_ip).expect("Active session");
-                            let notif = Notification {
-                                major_err_code: 6, // Cease
-                                minor_err_code: 3, // Deconfigured
-                                data: vec![],
-                            };
-                            session.send_message(Message::Notification(notif)).await?;
+                            session.notify(6 /* Cease */, 3/* Deconfigured */).await?;
                         }
                     }
 
