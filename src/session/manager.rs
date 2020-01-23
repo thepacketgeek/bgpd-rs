@@ -141,15 +141,7 @@ impl SessionManager {
                         .collect();
                     { // Current Sessions lock scope
                         let mut current_sessions = self.sessions.lock().await;
-                        let mut removed_peers: Vec<IpAddr> = vec![];
-                        for (addr, mut current_session) in current_sessions.iter_mut() {
-                            if let Some(network) = configs_by_network.keys().find(|n| n.contains(*addr)) {
-                                let config = configs_by_network.get(network).expect("Network has config");
-                                current_session.update_config(config.clone());
-                            } else {
-                                removed_peers.push(*addr);
-                            }
-                        }
+                        let removed_peers = find_removed_peers(&mut current_sessions, &configs_by_network);
 
                         debug!(
                             "Received config [{} peer configs, {} removed peer configs]",
@@ -172,4 +164,22 @@ impl SessionManager {
             }
         }
     }
+}
+
+fn find_removed_peers(
+    sessions: &mut HashMap<IpAddr, Session>,
+    configs: &HashMap<IpNetwork, Arc<PeerConfig>>,
+) -> Vec<IpAddr> {
+    sessions
+        .iter_mut()
+        .filter_map(|(addr, current_session)| {
+            if let Some(network) = configs.keys().find(|n| n.contains(*addr)) {
+                let config = configs.get(network).expect("Network has config");
+                current_session.update_config(config.clone());
+                None
+            } else {
+                Some(*addr)
+            }
+        })
+        .collect()
 }
