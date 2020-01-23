@@ -10,7 +10,9 @@ BGP service daemon built in Rust
 
 ## Features
 - [x] Listen for Incoming BGP sessions 
+- Specified peers can be an IP address or Network+Mask
 - [x] Initiate outbound TCP connection to idle peers
+- Will attempt connection based on configured poll interval
 - [x] Negotiate OPEN Capabilities
 - [x] Receive and respond to Keepalives (on hold time based interval)
 - [x] Process UPDATE messages, store in RIB
@@ -28,12 +30,13 @@ BGP service daemon built in Rust
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).
 
 Details of config values:
-```
+```toml
 router_id = "1.1.1.1"       # Default Router ID for the service
 default_as = 65000          # Used as the local-as if `local_as` is not defined for a peer
 
 [[peers]]
 remote_ip = "127.0.0.2"     # This can also be an IPv6 address, see next peer
+# remote_ip = "10.0.0.0/24"  # Network+Mask will accept inbound connections from any source in the subnet
 remote_as = 65000
 passive = true              # If passive, bgpd won't attempt outbound connections
 router_id = "127.0.0.1"     # Can override local Router ID for this peer
@@ -86,7 +89,7 @@ You can send the BGPd process a `SIGHUP` to reload and update peer configs. The 
 BGPd offers an JSON RCP API that can be queried to view operational info like neighbors and routes:
 
 Neighbor uptime & prefixes received
-```
+```sh
 $ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"show_peers","params":null,"id":0}' | jq '.result[] | {peer: .peer, uptime: .uptime, prefixes_received: .prefixes_received}'
 {
   "peer": "127.0.0.2",
@@ -106,7 +109,7 @@ $ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc"
 ```
 
 Learned routes (with attributes)
-```
+```sh
 $ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"show_routes_learned","params": {"from_peer": "172.16.20.2"},"id":0}' | jq '.result[]'
 {
   "afi": "IPv6",
@@ -167,7 +170,7 @@ neighbor 127.0.0.1 {
 
 Running the exabgp service with the command:
 
-```
+```sh
 $ env exabgp.tcp.port=1179 exabgp.tcp.bind="127.0.0.2" exabgp ./conf_127.0.0.2.ini --once
 ```
 > *--once only attempts a single connection, auto-quits when session ends*
@@ -176,18 +179,18 @@ $ env exabgp.tcp.port=1179 exabgp.tcp.bind="127.0.0.2" exabgp ./conf_127.0.0.2.i
 And then running `bgpd` as follows:
 
 Using IPv6
-```
+```sh
 $ cargo run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
-```
+```sh
 $ cargo run -- -d -p 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
-```
+```sh
 $ cargo build
 $ sudo ./targets/debug/bgpd ./examples/config.toml -vv
 ```

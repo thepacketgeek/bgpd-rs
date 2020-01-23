@@ -18,7 +18,7 @@ This is an example CLI that uses the BGPd API to interact with a running instanc
 Use `bgpd-cli` for viewing peer & route information:
 
 Peer summary:
-```
+```sh
 [~/bgpd-rs/examples/cli] $ cargo run -- show neighbors
  Neighbor     Router ID    AS     MsgRcvd  MsgSent  Uptime    State        PfxRcd
 ----------------------------------------------------------------------------------
@@ -29,7 +29,7 @@ Peer summary:
  > Tip: Use the `watch` command for keeping this view up-to-date
 
 Peer Detail:
-```
+```sh
 BGP neighbor is 127.0.0.3,  remote AS 65000, local AS 65000
   *Peer is Disabled
   Neighbor capabilities:
@@ -58,7 +58,7 @@ BGP neighbor is 172.16.20.2,  remote AS 65000, local AS 65000
 ## Routes
 
 Learned routes:
-```
+```sh
 [~/bgpd-rs/examples/cli] $ cargo build
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes learned
 IPv4 / Unicast
@@ -85,7 +85,7 @@ IPv6 / Unicast
 ```
 
 Advertised routes:
-```
+```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes advertised
 IPv4 / Unicast
  Advertised To  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
@@ -105,7 +105,7 @@ IPv6 / Unicast
 
 ### Unicast
 IPv4 Unicast
-```
+```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise route 10.10.10.0/24 172.16.20.90 --local-pref 500
 Added route to RIB for announcement:
  Received From  Prefix         Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
@@ -114,7 +114,7 @@ Added route to RIB for announcement:
 ```
 
 IPv6 Unicast
-```
+```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise route 10.10.10.0/24 172.16.20.90 --local-pref 500
 Added route to RIB for announcement:
  Received From  Prefix         Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
@@ -122,7 +122,7 @@ Added route to RIB for announcement:
  API            10.10.10.0/24  172.16.20.90  00:00:00  Incomplete                                            00:00:00
 ```
 
-```
+```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes advertised
 IPv4 / Unicast
  Advertised To  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
@@ -138,7 +138,7 @@ IPv6 / Unicast
 ```
 
 ### Flowspec
-```
+```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli advertise flow ipv4 'traffic-rate 100' -m 'source 192.168.10.0/24'
 Added flow to RIB for announcement:
  Received From  Prefix               Next Hop  Age       Origin      Local Pref  Metric  AS Path  Communities            Age
@@ -151,7 +151,7 @@ Added flow to RIB for announcement:
  Config         Dst 3001:10:20::/64            00:00:00  Incomplete                               redirect:100:200  00:00:00
  ```
 
- ```
+ ```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli  show routes learned
 IPv4 / Flowspec
  Received From  Prefix              Next Hop  Age       Origin      Local Pref  Metric  AS Path  Communities     Age
