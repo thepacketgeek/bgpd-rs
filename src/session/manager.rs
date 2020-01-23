@@ -3,9 +3,9 @@ use std::error::Error;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use bgp_rs::{Message, Notification};
 use futures::future::FutureExt;
 use futures::{pin_mut, select};
+use ipnetwork::IpNetwork;
 use log::{debug, info, warn};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch, Mutex};
@@ -33,7 +33,7 @@ impl SessionManager {
         let (poller_tx, poller_rx) = mpsc::unbounded_channel();
         let mut poller = Poller::new(listener, config.poll_interval.into(), poller_rx);
         for peer_config in config.peers.iter() {
-            poller.upsert_peer(peer_config.clone());
+            poller.upsert_config(peer_config.clone());
         }
 
         Self {
@@ -83,41 +83,21 @@ impl SessionManager {
                     Err(err) => {
                         match err {
                             SessionError::Deconfigured => {
-                                let notif = Notification {
-                                    major_err_code: 6,
-                                    minor_err_code: 3,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(6, 3).await?;
                             }
                             SessionError::HoldTimeExpired(_) => {
-                                let notif = Notification {
-                                    major_err_code: 4,
-                                    minor_err_code: 0,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(4, 0).await?;
                             }
                             SessionError::FiniteStateMachine(minor) => {
-                                let notif = Notification {
-                                    major_err_code: 5,
-                                    minor_err_code: minor,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(5, minor).await?;
                             }
                             SessionError::OpenAsnMismatch(_, _) => {
-                                let notif = Notification {
-                                    major_err_code: 3,
-                                    minor_err_code: 2,
-                                    data: vec![],
-                                };
-                                session.send_message(Message::Notification(notif)).await?;
+                                session.notify(3, 2).await?;
                             }
                             _ => (),
                         }
                         warn!("{}", err);
-                        self.poller_tx.send(session.peer.clone()).unwrap();
+                        self.poller_tx.send(session.config.clone()).unwrap();
                         ended_sessions.push(*remote_ip);
                     }
                 }
@@ -136,7 +116,7 @@ impl SessionManager {
             new_connection = receive_new_sessions => {
                 if let Ok(Some((stream, peer_config))) = new_connection {
                     let mut sessions = sessions_clone.lock().await;
-                    let remote_ip = peer_config.remote_ip;
+                    let remote_ip = stream.peer_addr().expect("Stream has remote peer").ip();
                     if sessions.contains_key(&remote_ip) {
                         warn!(
                             "Unexpected connection from {}: Already have an existing session",
@@ -146,54 +126,38 @@ impl SessionManager {
                     }
                     let protocol = MessageProtocol::new(stream, MessageCodec::new());
                     let new_session = Session::new(Arc::clone(&peer_config), protocol);
+                    info!("New session started: {}", remote_ip);
                     sessions.insert(remote_ip, new_session);
-                    info!("New session started: {}", peer_config.remote_ip);
                 }
                 Ok(None)
             },
             update = config_updates => {
                 if let Some(new_config) = update {
                     self.config = new_config.clone();
-                    let mut current_sessions = self.sessions.lock().await;
-                    for peer_config in &new_config.peers {
-                        if let Some(active_session) = current_sessions.get_mut(&peer_config.remote_ip) {
-                            active_session.update_config(peer_config.clone());
-                        }
-                    }
-                    let config_peers: HashMap<IpAddr, Arc<PeerConfig>> = new_config
+                    let configs_by_network: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
                         .peers
                         .iter()
                         .map(|p| (p.remote_ip, p.clone()))
                         .collect();
-                    let added_peers: Vec<_> = config_peers
-                        .iter()
-                        .filter(|(ip, _)| !current_sessions.contains_key(&ip))
-                        .collect();
-                    let removed_peers: Vec<_> = current_sessions
-                        .iter()
-                        .filter(|(ip, _)| !config_peers.contains_key(&ip))
-                        .map(|(ip, _)| ip.clone())
-                        .collect();
+                    { // Current Sessions lock scope
+                        let mut current_sessions = self.sessions.lock().await;
+                        let removed_peers = find_removed_peers(&mut current_sessions, &configs_by_network);
 
-                    debug!(
-                        "Received config [{} added peers, {} removed peers]",
-                        added_peers.len(),
-                        removed_peers.len()
-                    );
+                        debug!(
+                            "Received config [{} peer configs, {} removed peer configs]",
+                            configs_by_network.len(),
+                            removed_peers.len()
+                        );
 
-                    for removed_ip in removed_peers {
-                        warn!("Session ended with {}, peer de-configured", removed_ip);
-                        let mut session = current_sessions.remove(&removed_ip).expect("Active session");
-                        let notif = Notification {
-                            major_err_code: 6, // Cease
-                            minor_err_code: 3, // Deconfigured
-                            data: vec![],
-                        };
-                        session.send_message(Message::Notification(notif)).await?;
+                        for removed_ip in removed_peers {
+                            warn!("Session ended with {}, peer de-configured", removed_ip);
+                            let mut session = current_sessions.remove(&removed_ip).expect("Active session");
+                            session.notify(6 /* Cease */, 3/* Deconfigured */).await?;
+                        }
                     }
 
-                    for (_, new_peer) in added_peers {
-                        self.poller_tx.send(new_peer.clone()).unwrap();
+                    for (_, new_config) in configs_by_network {
+                        self.poller_tx.send(new_config.clone())?;
                     }
                 }
                 Ok(None)
@@ -202,9 +166,20 @@ impl SessionManager {
     }
 }
 
-// async fn init_connection(
-//     sessions: Arc<Mutex<HashMap<IpAddr, Session>>>,
-//     connection: Result<(TcpStream, PeerConfig)>,
-// ) {
-
-// }
+fn find_removed_peers(
+    sessions: &mut HashMap<IpAddr, Session>,
+    configs: &HashMap<IpNetwork, Arc<PeerConfig>>,
+) -> Vec<IpAddr> {
+    sessions
+        .iter_mut()
+        .filter_map(|(addr, current_session)| {
+            if let Some(network) = configs.keys().find(|n| n.contains(*addr)) {
+                let config = configs.get(network).expect("Network has config");
+                current_session.update_config(config.clone());
+                None
+            } else {
+                Some(*addr)
+            }
+        })
+        .collect()
+}

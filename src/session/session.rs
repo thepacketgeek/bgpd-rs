@@ -5,8 +5,8 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use bgp_rs::{
-    ASPath, Capabilities, MPReachNLRI, Message, NLRIEncoding, Open, OpenCapability, OpenParameter,
-    PathAttribute, Segment, Update, AFI, SAFI,
+    ASPath, Capabilities, MPReachNLRI, Message, NLRIEncoding, Notification, Open, OpenCapability,
+    OpenParameter, PathAttribute, Segment, Update, AFI, SAFI,
 };
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, StreamExt};
@@ -29,7 +29,7 @@ pub struct Session {
     pub(crate) addr: IpAddr,
     pub(crate) state: SessionState,
     pub(crate) router_id: IpAddr,
-    pub(crate) peer: Arc<PeerConfig>,
+    pub(crate) config: Arc<PeerConfig>,
     pub(crate) protocol: MessageProtocol,
     pub(crate) connect_time: DateTime<Utc>,
     pub(crate) hold_timer: HoldTimer,
@@ -39,11 +39,11 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(peer: Arc<PeerConfig>, protocol: MessageProtocol) -> Session {
-        let hold_timer = peer.hold_timer;
-        let capabilities: Vec<OpenCapability> = vec![OpenCapability::FourByteASN(peer.local_as)]
+    pub fn new(config: Arc<PeerConfig>, protocol: MessageProtocol) -> Session {
+        let hold_timer = config.hold_timer;
+        let capabilities: Vec<OpenCapability> = vec![OpenCapability::FourByteASN(config.local_as)]
             .into_iter()
-            .chain(peer.families.iter().map(|f| f.to_open_param()))
+            .chain(config.families.iter().map(|f| f.to_open_param()))
             .collect();
         let session_rib = SessionRoutes::new(Families::new(vec![]));
         Session {
@@ -53,8 +53,12 @@ impl Session {
                 .expect("Stream has remote IP")
                 .ip(),
             state: SessionState::Connect,
-            router_id: peer.remote_ip,
-            peer,
+            router_id: protocol
+                .get_ref()
+                .peer_addr()
+                .expect("Protocol has remote peer")
+                .ip(),
+            config,
             protocol,
             connect_time: Utc::now(),
             hold_timer: HoldTimer::new(hold_timer),
@@ -76,7 +80,7 @@ impl Session {
             .peer_addr()
             .expect("Getting remote addr")
             .port();
-        remote_port == self.peer.dest_port
+        remote_port == self.config.dest_port
     }
 
     pub fn update_state(&mut self, new_state: SessionState) {
@@ -91,13 +95,13 @@ impl Session {
 
     pub fn update_config(&mut self, new_config: Arc<PeerConfig>) {
         debug!("Peer config for {} (active session) updated", self.addr);
-        self.peer = new_config;
+        self.config = new_config;
     }
 
     /// Main function for making progress with the session
     /// Waits for either a new incoming message or a HoldTimer event
     pub async fn run(&mut self) -> Result<Option<SessionUpdate>, SessionError> {
-        if !self.peer.enabled {
+        if !self.config.enabled {
             // Peer has been disabled, shutdown session
             return Err(SessionError::Deconfigured);
         }
@@ -164,7 +168,7 @@ impl Session {
                     EntrySource::Config => AdvertiseSource::Config,
                     EntrySource::Peer(_) => AdvertiseSource::Peer,
                 };
-                self.peer.advertise_sources.contains(&source)
+                self.config.advertise_sources.contains(&source)
             })
             .collect();
         if !pending_routes.is_empty() {
@@ -233,19 +237,28 @@ impl Session {
         Ok(())
     }
 
+    pub async fn notify(&mut self, maj: u8, min: u8) -> Result<(), io::Error> {
+        let notif = Notification {
+            major_err_code: maj,
+            minor_err_code: min,
+            data: vec![],
+        };
+        self.send_message(Message::Notification(notif)).await
+    }
+
     pub fn open_received(
         &mut self,
         received_open: Open,
     ) -> Result<(Capabilities, u16), SessionError> {
         let router_id = IpAddr::from(transform_u32_to_bytes(received_open.identifier));
         let remote_asn = asn_from_open(&received_open);
-        if remote_asn != self.peer.remote_as {
+        if remote_asn != self.config.remote_as {
             return Err(SessionError::OpenAsnMismatch(
                 remote_asn,
-                self.peer.remote_as,
+                self.config.remote_as,
             ));
         }
-        let hold_timer = cmp::min(received_open.hold_timer, self.peer.hold_timer);
+        let hold_timer = cmp::min(received_open.hold_timer, self.config.hold_timer);
         debug!(
             "[{}] Received OPEN [w/ {} params]",
             self.addr,
@@ -258,22 +271,22 @@ impl Session {
     }
 
     pub fn create_open(&self) -> Open {
-        let router_id = match self.peer.local_router_id {
+        let router_id = match self.config.local_router_id {
             IpAddr::V4(ipv4) => ipv4,
             _ => unreachable!(),
         };
         let families: Vec<_> = self
-            .peer
+            .config
             .families
             .iter()
             .map(|family| family.to_open_param())
             .collect();
         let mut capabilities: Vec<OpenCapability> =
-            Vec::with_capacity(self.peer.families.len() + 1);
+            Vec::with_capacity(self.config.families.len() + 1);
         capabilities.extend(families);
-        capabilities.push(OpenCapability::FourByteASN(self.peer.local_as));
-        let two_byte_asn = if self.peer.local_as < 65535 {
-            self.peer.local_as as u16
+        capabilities.push(OpenCapability::FourByteASN(self.config.local_as));
+        let two_byte_asn = if self.config.local_as < 65535 {
+            self.config.local_as as u16
         } else {
             // AS-TRANS: RFC 6793 [4.2.3.9]
             23456
@@ -301,22 +314,22 @@ impl Session {
         ));
 
         let mut as_path = update.attributes.as_path.clone();
-        if self.peer.is_ebgp() {
+        if self.config.is_ebgp() {
             if as_path.segments.is_empty() {
                 as_path
                     .segments
-                    .push(Segment::AS_SEQUENCE(vec![self.peer.local_as]));
+                    .push(Segment::AS_SEQUENCE(vec![self.config.local_as]));
             } else {
                 // TODO: Support multiple segments?
                 let segment = match &as_path.segments[0] {
                     Segment::AS_SEQUENCE(seq) => {
                         let mut seg = seq.clone();
-                        seg.insert(0, self.peer.local_as);
+                        seg.insert(0, self.config.local_as);
                         Segment::AS_SEQUENCE(seg)
                     }
                     Segment::AS_SET(set) => {
                         let mut seg = set.clone();
-                        seg.insert(0, self.peer.local_as);
+                        seg.insert(0, self.config.local_as);
                         Segment::AS_SET(seg)
                     }
                 };

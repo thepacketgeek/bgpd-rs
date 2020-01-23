@@ -1,5 +1,6 @@
 use std::net::IpAddr;
 
+use bgp_rs::Message;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
 use super::*;

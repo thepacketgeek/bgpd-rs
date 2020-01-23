@@ -5,6 +5,7 @@ use std::net::IpAddr;
 
 use bgp_rs::{AFI, SAFI};
 use bgpd_rpc_lib::{FlowSpec, RouteSpec};
+use ipnetwork::IpNetwork;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use toml;
 
@@ -49,7 +50,7 @@ impl Defaults {
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct PeerConfigSpec {
     // Peer connection details
-    pub(super) remote_ip: IpAddr,
+    pub(super) remote_ip: IpNetwork,
     pub(super) remote_as: u32,
     // Local connection details
     pub(super) local_as: Option<u32>,
@@ -169,11 +170,14 @@ mod tests {
         let config = ServerConfigSpec::from_file("./examples/config.toml").unwrap();
         assert_eq!(config.router_id, IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)));
         assert_eq!(config.default_as, 65000);
-        assert_eq!(config.peers.len(), 3);
+        assert_eq!(config.peers.len(), 2);
         let v4_peer = config
             .peers
             .iter()
-            .find(|p| p.remote_ip == IpAddr::from(Ipv4Addr::new(127, 0, 0, 2)))
+            .find(|p| {
+                p.remote_ip
+                    == IpNetwork::new(IpAddr::from(Ipv4Addr::new(127, 0, 0, 0)), 30).unwrap()
+            })
             .unwrap();
         assert_eq!(v4_peer.local_as, Some(65000));
         assert_eq!(v4_peer.hold_timer, 30);
@@ -183,7 +187,11 @@ mod tests {
         let v6_peer = config
             .peers
             .iter()
-            .find(|p| p.remote_ip == IpAddr::from("::2".parse::<Ipv6Addr>().unwrap()))
+            .find(|p| {
+                p.remote_ip
+                    == IpNetwork::new(IpAddr::from("::2".parse::<Ipv6Addr>().unwrap()), 128)
+                        .unwrap()
+            })
             .unwrap();
         assert_eq!(v6_peer.families.len(), 2);
         assert_eq!(v6_peer.hold_timer, 180);

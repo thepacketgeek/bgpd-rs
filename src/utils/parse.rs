@@ -10,6 +10,7 @@ use bgp_rs::{
     ASPath, NLRIEncoding, Origin, PathAttribute, Prefix, Segment, AFI, SAFI,
 };
 use bgpd_rpc_lib::{FlowSpec, RouteSpec, SpecAttributes};
+use ipnetwork::{IpNetwork, NetworkSize};
 
 use crate::rib::{Community, CommunityList, Family};
 use crate::utils::{as_u64_be, transform_u32_to_bytes};
@@ -40,6 +41,20 @@ impl Error for ParseError {
 impl From<io::Error> for ParseError {
     fn from(error: io::Error) -> Self {
         ParseError::new(error.to_string())
+    }
+}
+
+// Determine if a given IPNetwork is for a single host
+// If so, return the IpAddr
+pub fn get_host_address(network: &IpNetwork) -> Option<IpAddr> {
+    let is_host = match network.size() {
+        NetworkSize::V4(size) => size == 1,
+        NetworkSize::V6(size) => size == 1,
+    };
+    if is_host {
+        Some(network.ip())
+    } else {
+        None
     }
 }
 
@@ -394,6 +409,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_get_host_address() {
+        assert!(get_host_address(&"1.1.1.0/24".parse::<IpNetwork>().unwrap()).is_none(),);
+        assert_eq!(
+            get_host_address(&"1.1.1.1".parse::<IpNetwork>().unwrap()),
+            Some(IpAddr::from(Ipv4Addr::new(1, 1, 1, 1)))
+        );
+        assert!(get_host_address(&"2001:1:2::10".parse::<IpNetwork>().unwrap()).is_some(),);
+        assert!(get_host_address(&"2001:1:2::10/64".parse::<IpNetwork>().unwrap()).is_none());
+    }
 
     #[test]
     fn test_asn_from_dotted() {

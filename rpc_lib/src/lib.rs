@@ -16,7 +16,7 @@ jsonrpsee::rpc_api! {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PeerSummary {
-    pub peer: IpAddr,
+    pub peer: String,
     pub enabled: bool,
     pub router_id: Option<IpAddr>,
     pub remote_asn: u32,

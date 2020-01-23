@@ -10,7 +10,7 @@ use crate::rib::EntrySource;
 
 use super::peers::{peer_to_detail, peer_to_summary};
 use super::routes::entry_to_route;
-use crate::utils::{parse_flow_spec, parse_route_spec};
+use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 
 pub async fn serve(socket: SocketAddr, state: Arc<State>) {
     info!("Starting JSON-RPC server on {}...", socket);
@@ -22,49 +22,63 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 Api::ShowPeers { respond } => {
                     let mut output: Vec<PeerSummary> = vec![];
                     let sessions = state.sessions.lock().await;
-                    let peers = sessions.get_peer_configs();
+                    let configs = sessions.get_peer_configs();
                     let active_sessions = sessions.sessions.lock().await;
                     let rib = state.rib.lock().await;
-                    let peer_info = peers
+                    // Summary for any non-idle sessions
+                    let session_summaries: Vec<PeerSummary> = active_sessions
+                        .iter()
+                        .map(|(addr, session)| {
+                            let pfx_rcvd = rib.get_routes_from_peer(*addr).len() as u64;
+                            peer_to_summary(session.config.clone(), Some(session), Some(pfx_rcvd))
+                        })
+                        .collect();
+                    output.extend(session_summaries);
+                    // Summaries for idle peer/network configs
+                    let idle_summaries = configs
                         .into_iter()
-                        .map(|config| {
-                            let session = active_sessions.get(&config.remote_ip);
-                            let pfx_rcvd = {
-                                if let Some(session) = session {
-                                    let routes = rib.get_routes_from_peer(session.peer.remote_ip);
-                                    Some(routes.len() as u64)
-                                } else {
-                                    None
+                        .filter_map(|config| {
+                            if let Some(remote_ip) = get_host_address(&config.remote_ip) {
+                                // Don't duplicate session summaries
+                                if active_sessions.get(&remote_ip).is_some() {
+                                    return None;
                                 }
-                            };
-                            peer_to_summary(config, session, pfx_rcvd)
+                            }
+                            Some(peer_to_summary(config, None, None))
                         })
                         .collect::<Vec<PeerSummary>>();
-                    output.extend(peer_info);
+                    output.extend(idle_summaries);
                     respond.ok(output).await;
                 }
                 Api::ShowPeerDetail { respond } => {
                     let mut output: Vec<PeerDetail> = vec![];
                     let sessions = state.sessions.lock().await;
-                    let peers = sessions.get_peer_configs();
+                    let configs = sessions.get_peer_configs();
                     let active_sessions = sessions.sessions.lock().await;
                     let rib = state.rib.lock().await;
-                    let peer_info = peers
-                        .into_iter()
-                        .map(|config| {
-                            let session = active_sessions.get(&config.remote_ip);
-                            let pfx_rcvd = {
-                                if let Some(session) = session {
-                                    let routes = rib.get_routes_from_peer(session.addr);
-                                    Some(routes.len() as u64)
-                                } else {
-                                    None
-                                }
-                            };
-                            peer_to_detail(config, session, pfx_rcvd)
+                    // Detail for any non-idle sessions
+                    let session_details: Vec<PeerDetail> = active_sessions
+                        .iter()
+                        .map(|(addr, session)| {
+                            let pfx_rcvd = rib.get_routes_from_peer(*addr).len() as u64;
+                            peer_to_detail(session.config.clone(), Some(session), Some(pfx_rcvd))
                         })
-                        .collect::<Vec<PeerDetail>>();
-                    output.extend(peer_info);
+                        .collect();
+                    output.extend(session_details);
+                    // Details for idle peer/network configs
+                    let idle_details: Vec<PeerDetail> = configs
+                        .into_iter()
+                        .filter_map(|config| {
+                            if let Some(remote_ip) = get_host_address(&config.remote_ip) {
+                                // Don't duplicate session details
+                                if active_sessions.get(&remote_ip).is_some() {
+                                    return None;
+                                }
+                            }
+                            Some(peer_to_detail(config, None, None))
+                        })
+                        .collect();
+                    output.extend(idle_details);
                     respond.ok(output).await;
                 }
                 Api::ShowRoutesLearned { respond, from_peer } => {

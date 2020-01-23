@@ -8,6 +8,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use bgpd_rpc_lib::{FlowSpec, RouteSpec};
+use ipnetwork::IpNetwork;
 
 use crate::rib::Family;
 
@@ -29,7 +30,7 @@ pub struct ServerConfig {
 ///   Has missing PeerConfigSpec items defaulted to Server values
 #[derive(Debug)]
 pub struct PeerConfig {
-    pub remote_ip: IpAddr,
+    pub remote_ip: IpNetwork,
     pub remote_as: u32,
     pub local_as: u32,
     pub local_router_id: IpAddr,
