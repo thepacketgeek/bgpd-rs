@@ -12,6 +12,7 @@ remote_as = 65000
 local_as = 65000
 router_id = "127.0.0.1"     # Can override local Router ID for this peer
 hold_timer = 30
+enabled = true
 families = [
     "ipv4 unicast",
     "ipv6 unicast",

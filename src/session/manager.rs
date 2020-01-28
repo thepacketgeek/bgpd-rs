@@ -3,12 +3,13 @@ use std::error::Error;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use futures::future::FutureExt;
-use futures::{pin_mut, select};
 use ipnetwork::IpNetwork;
 use log::{debug, info, warn};
-use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::{
+    self,
+    net::TcpListener,
+    sync::{mpsc, watch, Mutex},
+};
 
 use super::codec::{MessageCodec, MessageProtocol};
 use super::{Poller, PollerTx, Session, SessionError, SessionUpdate};
@@ -54,8 +55,6 @@ impl SessionManager {
         rib: Arc<Mutex<RIB>>,
     ) -> Result<Option<SessionUpdate>, Box<dyn Error>> {
         let sessions_clone = Arc::clone(&self.sessions);
-        let receive_new_sessions = self.idle_peers.get_connection().fuse();
-        let config_updates = self.config_watch.recv().fuse();
 
         // TODO: Figure out how to select_all over sessions
         // let active_sessions = {
@@ -111,9 +110,8 @@ impl SessionManager {
             }
         }
 
-        pin_mut!(receive_new_sessions, config_updates);
-        select! {
-            new_connection = receive_new_sessions => {
+        tokio::select! {
+            new_connection = self.idle_peers.get_connection() => {
                 if let Ok(Some((stream, peer_config))) = new_connection {
                     let mut sessions = sessions_clone.lock().await;
                     let remote_ip = stream.peer_addr().expect("Stream has remote peer").ip();
@@ -131,37 +129,36 @@ impl SessionManager {
                 }
                 Ok(None)
             },
-            update = config_updates => {
-                if let Some(new_config) = update {
-                    self.config = new_config.clone();
-                    let configs_by_network: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
-                        .peers
-                        .iter()
-                        .map(|p| (p.remote_ip, p.clone()))
-                        .collect();
-                    { // Current Sessions lock scope
-                        let mut current_sessions = self.sessions.lock().await;
-                        let removed_peers = find_removed_peers(&mut current_sessions, &configs_by_network);
+            Some(new_config) = self.config_watch.recv() => {
+                self.config = new_config.clone();
+                let configs_by_network: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
+                    .peers
+                    .iter()
+                    .map(|p| (p.remote_ip, p.clone()))
+                    .collect();
+                { // Current Sessions lock scope
+                    let mut current_sessions = self.sessions.lock().await;
+                    let removed_peers = find_removed_peers(&mut current_sessions, &configs_by_network);
 
-                        debug!(
-                            "Received config [{} peer configs, {} removed peer configs]",
-                            configs_by_network.len(),
-                            removed_peers.len()
-                        );
+                    debug!(
+                        "Received config [{} peer configs, {} removed peer configs]",
+                        configs_by_network.len(),
+                        removed_peers.len()
+                    );
 
-                        for removed_ip in removed_peers {
-                            warn!("Session ended with {}, peer de-configured", removed_ip);
-                            let mut session = current_sessions.remove(&removed_ip).expect("Active session");
-                            session.notify(6 /* Cease */, 3/* Deconfigured */).await?;
-                        }
-                    }
-
-                    for (_, new_config) in configs_by_network {
-                        self.poller_tx.send(new_config.clone())?;
+                    for removed_ip in removed_peers {
+                        warn!("Session ended with {}, peer de-configured", removed_ip);
+                        let mut session = current_sessions.remove(&removed_ip).expect("Active session");
+                        session.notify(6 /* Cease */, 3/* Deconfigured */).await?;
                     }
                 }
+
+                for (_, new_config) in configs_by_network {
+                    self.poller_tx.send(new_config.clone())?;
+                }
                 Ok(None)
-            }
+            },
+            else => Ok(None),
         }
     }
 }
