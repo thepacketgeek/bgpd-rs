@@ -11,7 +11,10 @@ use bgp_rs::{
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, StreamExt};
 use log::{debug, trace, warn};
-use tokio::time::{timeout, Duration};
+use tokio::{
+    self,
+    time::{timeout, Duration},
+};
 
 use super::codec::MessageProtocol;
 use super::{HoldTimer, MessageCounts};
@@ -112,75 +115,81 @@ impl Session {
             }
             self.update_state(SessionState::OpenSent);
         }
-        // TODO: Select in Manager?
-        match timeout(Duration::from_millis(250), self.protocol.next()).await {
-            // Framed stream is exhausted, remote side closed connection
-            Ok(None) => {
-                return Err(SessionError::Other(format!(
-                    "Session ended with {}",
-                    self.addr
-                )));
-            }
-            Ok(Some(Ok(message))) => {
-                let message_type = get_message_type(&message);
-                trace!("[{}] Incoming: {}", self.addr, message_type);
-                self.counts.increment_received();
-                self.hold_timer.received();
-                let resp = self.process_message(message)?;
-                match resp {
-                    MessageResponse::Reply(message) => {
-                        self.send_message(message).await?;
-                    }
-                    MessageResponse::Update(update) => {
-                        return Ok(Some(SessionUpdate::Learned((self.addr, update))));
-                    }
-                    _ => (),
-                }
-                return Ok(None);
-            }
-            // Error decoding message
-            Ok(Some(Err(err))) => {
-                return Err(SessionError::Other(format!(
-                    "Session ended with {}: {}",
-                    self.addr, err
-                )));
-            }
-            // Default for when Timeout is hit first (Err(_))
-            _ => (),
-        }
-
-        if self.state != SessionState::Established {
-            return Ok(None);
-        }
-
         trace!("Hold time on {}: {}", self.addr, self.hold_timer);
-        if self.hold_timer.should_send_keepalive().await? {
-            self.send_message(Message::KeepAlive).await?;
-        }
 
-        let mut pending_routes: Vec<_> = self
-            .routes
-            .pending()
-            .into_iter()
-            .filter(|r| {
-                let source = match r.source {
-                    EntrySource::Api => AdvertiseSource::Api,
-                    EntrySource::Config => AdvertiseSource::Config,
-                    EntrySource::Peer(_) => AdvertiseSource::Peer,
-                };
-                self.config.advertise_sources.contains(&source)
-            })
-            .collect();
-        if !pending_routes.is_empty() {
-            for entry in pending_routes.drain(..) {
-                self.send_message(Message::Update(self.create_update(&entry.update)))
-                    .await?;
-                // TODO: Store actual advertised routes
-                //       so we can report outgoing updates as advertised
-                self.routes.mark_advertised(&entry);
+        if self.state == SessionState::Established {
+            let mut pending_routes: Vec<_> = self
+                .routes
+                .pending()
+                .into_iter()
+                .filter(|r| {
+                    let source = match r.source {
+                        EntrySource::Api => AdvertiseSource::Api,
+                        EntrySource::Config => AdvertiseSource::Config,
+                        EntrySource::Peer(_) => AdvertiseSource::Peer,
+                    };
+                    self.config.advertise_sources.contains(&source)
+                })
+                .collect();
+            if !pending_routes.is_empty() {
+                for entry in pending_routes.drain(..) {
+                    self.send_message(Message::Update(self.create_update(&entry.update)))
+                        .await?;
+                    // TODO: Store actual advertised routes
+                    //       so we can report outgoing updates as advertised
+                    self.routes.mark_advertised(&entry);
+                }
             }
         }
-        Ok(None)
+
+        // TODO: Select in Manager?
+        // match timeout(Duration::from_millis(250), self.protocol.next()).await {
+        tokio::select! {
+            message = self.protocol.next() => {
+                match message {
+                    // Framed stream is exhausted, remote side closed connection
+                    None => {
+                        return Err(SessionError::Other(format!(
+                            "Session ended with {}",
+                            self.addr
+                        )));
+                    }
+                    Some(Ok(message)) => {
+                        let message_type = get_message_type(&message);
+                        trace!("[{}] Incoming: {}", self.addr, message_type);
+                        self.counts.increment_received();
+                        self.hold_timer.received();
+                        let resp = self.process_message(message)?;
+                        match resp {
+                            MessageResponse::Reply(message) => {
+                                self.send_message(message).await?;
+                            }
+                            MessageResponse::Update(update) => {
+                                return Ok(Some(SessionUpdate::Learned((self.addr, update))));
+                            }
+                            _ => (),
+                        }
+                        return Ok(None);
+                    }
+                    // Error decoding message
+                    Some(Err(err)) => {
+                        return Err(SessionError::Other(format!(
+                            "Session ended with {}: {}",
+                            self.addr, err
+                        )));
+                    }
+                }
+            },
+            // Hold Timer
+            keepalive = self.hold_timer.should_send_keepalive() => {
+                match keepalive {
+                    Err(err) => return Err(err),
+                    Ok(should_send) => {if should_send {
+                        self.send_message(Message::KeepAlive).await?;
+                    } Ok(None)}
+                }
+            },
+        }
     }
 
     pub fn process_message(&mut self, message: Message) -> Result<MessageResponse, SessionError> {
