@@ -11,10 +11,7 @@ use bgp_rs::{
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, StreamExt};
 use log::{debug, trace, warn};
-use tokio::{
-    self,
-    time::{timeout, Duration},
-};
+use tokio;
 
 use super::codec::MessageProtocol;
 use super::{HoldTimer, MessageCounts};
@@ -142,17 +139,15 @@ impl Session {
             }
         }
 
-        // TODO: Select in Manager?
-        // match timeout(Duration::from_millis(250), self.protocol.next()).await {
         tokio::select! {
             message = self.protocol.next() => {
                 match message {
                     // Framed stream is exhausted, remote side closed connection
                     None => {
-                        return Err(SessionError::Other(format!(
+                        Err(SessionError::Other(format!(
                             "Session ended with {}",
                             self.addr
-                        )));
+                        )))
                     }
                     Some(Ok(message)) => {
                         let message_type = get_message_type(&message);
@@ -169,21 +164,21 @@ impl Session {
                             }
                             _ => (),
                         }
-                        return Ok(None);
+                        Ok(None)
                     }
                     // Error decoding message
                     Some(Err(err)) => {
-                        return Err(SessionError::Other(format!(
+                        Err(SessionError::Other(format!(
                             "Session ended with {}: {}",
                             self.addr, err
-                        )));
+                        )))
                     }
                 }
             },
             // Hold Timer
             keepalive = self.hold_timer.should_send_keepalive() => {
                 match keepalive {
-                    Err(err) => return Err(err),
+                    Err(err) => Err(err),
                     Ok(should_send) => {if should_send {
                         self.send_message(Message::KeepAlive).await?;
                     } Ok(None)}
