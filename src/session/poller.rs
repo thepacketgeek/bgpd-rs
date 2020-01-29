@@ -1,16 +1,19 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use futures::{pin_mut, select, FutureExt, StreamExt};
+use futures::StreamExt;
 use ipnetwork::IpNetwork;
 use log::{debug, trace, warn};
 use net2::TcpBuilder;
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
-use tokio::time::{timeout, DelayQueue, Duration, Instant};
+use tokio::time::{timeout, DelayQueue, Duration};
+use tokio::{
+    self,
+    net::{TcpListener, TcpStream},
+};
 
 use crate::config::PeerConfig;
 use crate::utils::get_host_address;
@@ -74,17 +77,11 @@ pub struct Poller {
 
 impl Poller {
     pub fn new(listener: TcpListener, interval: u32 /* seconds */, rx: PollerRx) -> Self {
-        let mut delay_queue = DelayQueue::with_capacity(4);
-        // Add an empty IP in a year so delay_queue is never empty
-        delay_queue.insert_at(
-            IpAddr::from(Ipv4Addr::new(0, 0, 0, 0)),
-            Instant::now() + Duration::from_secs(31_536_000),
-        );
         Self {
             idle_peers: HashMap::new(),
             tcp_listener: listener,
             interval: Duration::from_secs(interval.into()),
-            delay_queue,
+            delay_queue: DelayQueue::with_capacity(4),
             rx,
         }
     }
@@ -109,18 +106,12 @@ impl Poller {
         &mut self,
     ) -> Result<Option<(TcpStream, Arc<PeerConfig>)>, io::Error> {
         let local_outbound_addr = self.tcp_listener.local_addr().expect("Has local address");
-        let listener = FutureExt::fuse(timeout(
+        let listener = timeout(
             Duration::from_millis(TCP_INIT_TIMEOUT_MS.into()),
             self.tcp_listener.accept(),
-        ));
+        );
 
-        // TODO: If DelayQueue.is_empty(), CPU spikes to 100%
-        //       Look into returning a stream::pending() and remove
-        //       insert() call in `new()`
-        let initializer = FutureExt::fuse(self.delay_queue.next());
-        let rescheduled_peers = FutureExt::fuse(self.rx.recv());
-        pin_mut!(listener, initializer, rescheduled_peers);
-        select! {
+        tokio::select! {
             incoming = listener => {
                 if let Ok(Ok((stream, socket))) = incoming {
                     if let Some(config) = get_config_for_peer(&self.idle_peers, socket.ip()) {
@@ -148,7 +139,8 @@ impl Poller {
                 }
                 Ok(None)
             },
-            outgoing = initializer => {
+            // If DelayQueue.is_empty() and is polled, CPU spikes to 100%
+            outgoing = self.delay_queue.next(), if !self.delay_queue.is_empty() => {
                 if let Some(Ok(peer)) = outgoing {
                     let addr = peer.into_inner();
                     trace!("Poller outbound triggered for {}", addr);
@@ -169,7 +161,7 @@ impl Poller {
                 }
                 Ok(None)
             },
-            peer = rescheduled_peers => {
+            peer = self.rx.recv() => {
                 if let Some(config) = peer {
                     let network = config.remote_ip;
                     self.idle_peers
