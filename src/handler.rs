@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use log::trace;
 use tokio::net::TcpListener;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{watch, RwLock};
 
 use crate::config::ServerConfig;
 use crate::rib::RIB;
@@ -15,8 +15,8 @@ pub struct Server {
 }
 
 pub struct State {
-    pub(crate) sessions: Arc<Mutex<SessionManager>>,
-    pub(crate) rib: Arc<Mutex<RIB>>,
+    pub(crate) sessions: Arc<RwLock<SessionManager>>,
+    pub(crate) rib: Arc<RwLock<RIB>>,
 }
 
 impl Server {
@@ -40,8 +40,8 @@ impl Server {
 
         Ok(Self {
             inner: Arc::new(State {
-                sessions: Arc::new(Mutex::new(manager)),
-                rib: Arc::new(Mutex::new(rib)),
+                sessions: Arc::new(RwLock::new(manager)),
+                rib: Arc::new(RwLock::new(rib)),
             }),
         })
     }
@@ -54,23 +54,23 @@ impl Server {
         while let Ok(update) = self
             .inner
             .sessions
-            .lock()
+            .write()
             .await
             .get_update(self.inner.rib.clone())
             .await
         {
-            trace!("Rib has {} entries", self.inner.rib.lock().await.len());
+            trace!("Rib has {} entries", self.inner.rib.read().await.len());
             match update {
                 Some(SessionUpdate::Learned((router_id, update))) => {
                     trace!("Incoming update from {}: {:?}", router_id, update);
                     self.inner
                         .rib
-                        .lock()
+                        .write()
                         .await
                         .update_from_peer(router_id, update)?;
                 }
                 Some(SessionUpdate::Ended(peers)) => {
-                    let mut rib = self.inner.rib.lock().await;
+                    let mut rib = self.inner.rib.write().await;
                     for peer in peers {
                         rib.remove_from_peer(peer);
                     }

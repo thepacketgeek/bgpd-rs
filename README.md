@@ -3,8 +3,6 @@
 BGP service daemon built in Rust
 [![Actions Status](https://github.com/thepacketgeek/bgpd-rs/workflows/cargo/badge.svg)](https://github.com/thepacketgeek/bgpd-rs/actions)
 
- > Totally just a Proof-of-concept, mostly for my own amusement and learning
-
 ![PCAP](examples/pcap.png)
 
 
@@ -22,9 +20,9 @@ BGP service daemon built in Rust
 - [x] Advertise routes to peers (specified from API and/or Config) 
 - [x] API/CLI interface for interacting with BGPd
 - [x] Flowspec Support
-- [ ] Route Policy for filtering of learned & advertised routes
 - [ ] Route Refresh
 - [ ] Neighbor MD5 Authentication
+- [ ] Route Policy for filtering of learned & advertised routes
 
 # Peer config
 Peers and their config are defined in `TOML` format; see an example [here](examples/config.toml).

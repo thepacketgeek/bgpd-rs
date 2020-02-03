@@ -21,10 +21,10 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
             match request {
                 Api::ShowPeers { respond } => {
                     let mut output: Vec<PeerSummary> = vec![];
-                    let sessions = state.sessions.lock().await;
+                    let sessions = state.sessions.read().await;
                     let configs = sessions.get_peer_configs();
-                    let active_sessions = sessions.sessions.lock().await;
-                    let rib = state.rib.lock().await;
+                    let active_sessions = sessions.sessions.read().await;
+                    let rib = state.rib.read().await;
                     // Summary for any non-idle sessions
                     let session_summaries: Vec<PeerSummary> = active_sessions
                         .iter()
@@ -52,10 +52,10 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 }
                 Api::ShowPeerDetail { respond } => {
                     let mut output: Vec<PeerDetail> = vec![];
-                    let sessions = state.sessions.lock().await;
+                    let sessions = state.sessions.read().await;
                     let configs = sessions.get_peer_configs();
-                    let active_sessions = sessions.sessions.lock().await;
-                    let rib = state.rib.lock().await;
+                    let active_sessions = sessions.sessions.read().await;
+                    let rib = state.rib.read().await;
                     // Detail for any non-idle sessions
                     let session_details: Vec<PeerDetail> = active_sessions
                         .iter()
@@ -83,7 +83,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 }
                 Api::ShowRoutesLearned { respond, from_peer } => {
                     let mut output: Vec<LearnedRoute> = vec![];
-                    let rib = state.rib.lock().await;
+                    let rib = state.rib.read().await;
                     let entries = if let Some(peer) = from_peer {
                         rib.get_routes_from_peer(peer)
                     } else {
@@ -95,8 +95,8 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 }
                 Api::ShowRoutesAdvertised { respond, to_peer } => {
                     let mut output: Vec<LearnedRoute> = vec![];
-                    let sessions = state.sessions.lock().await;
-                    let active_sessions = sessions.sessions.lock().await;
+                    let sessions = state.sessions.read().await;
+                    let active_sessions = sessions.sessions.read().await;
                     let routes: Vec<LearnedRoute> = active_sessions
                         .values()
                         .filter(|s| {
@@ -126,7 +126,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     let response = match parse_route_spec(&route) {
                         Ok(update) => {
                             let (family, attributes, nlri) = update;
-                            let mut rib = state.rib.lock().await;
+                            let mut rib = state.rib.write().await;
                             let entry = rib.insert_from_api(family, attributes, nlri);
                             Ok(entry_to_route(entry))
                         }
@@ -138,7 +138,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     let response = match parse_flow_spec(&flow) {
                         Ok(update) => {
                             let (family, attributes, nlri) = update;
-                            let mut rib = state.rib.lock().await;
+                            let mut rib = state.rib.write().await;
                             let entry = rib.insert_from_api(family, attributes, nlri);
                             Ok(entry_to_route(entry))
                         }

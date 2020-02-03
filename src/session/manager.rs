@@ -8,7 +8,7 @@ use log::{debug, info, warn};
 use tokio::{
     self,
     net::TcpListener,
-    sync::{mpsc, watch, Mutex},
+    sync::{mpsc, watch, RwLock},
 };
 
 use super::codec::{MessageCodec, MessageProtocol};
@@ -19,7 +19,7 @@ use crate::rib::RIB;
 pub struct SessionManager {
     pub(crate) idle_peers: Poller,
     // Active Sessions                  remote_ip: session
-    pub(crate) sessions: Arc<Mutex<HashMap<IpAddr, Session>>>,
+    pub(crate) sessions: Arc<RwLock<HashMap<IpAddr, Session>>>,
     config: Arc<ServerConfig>,
     poller_tx: PollerTx,
     config_watch: watch::Receiver<Arc<ServerConfig>>,
@@ -39,7 +39,7 @@ impl SessionManager {
 
         Self {
             idle_peers: poller,
-            sessions: Arc::new(Mutex::new(HashMap::with_capacity(config.peers.len()))),
+            sessions: Arc::new(RwLock::new(HashMap::with_capacity(config.peers.len()))),
             config,
             poller_tx,
             config_watch,
@@ -52,13 +52,13 @@ impl SessionManager {
 
     pub async fn get_update(
         &mut self,
-        rib: Arc<Mutex<RIB>>,
+        rib: Arc<RwLock<RIB>>,
     ) -> Result<Option<SessionUpdate>, Box<dyn Error>> {
         let sessions_clone = Arc::clone(&self.sessions);
 
         // TODO: Figure out how to select_all over sessions
         // let active_sessions = {
-        //     let mut sessions = self.sessions.lock().await;
+        //     let mut sessions = self.sessions.write().await;
         //     let futs: Vec<_> = sessions
         //         .values_mut()
         //         .map(|sess| Box::pin(sess.run()))
@@ -68,9 +68,9 @@ impl SessionManager {
         {
             // Store sessions that have ended (remote_ip, router_id)
             let mut ended_sessions: Vec<IpAddr> = Vec::new();
-            let mut sessions = self.sessions.lock().await;
+            let mut sessions = self.sessions.write().await;
             for (remote_ip, session) in sessions.iter_mut() {
-                let routes = rib.lock().await.get_routes_for_peer(session.addr);
+                let routes = rib.read().await.get_routes_for_peer(session.addr);
                 session.routes.insert_routes(routes);
 
                 match session.run().await {
@@ -113,7 +113,7 @@ impl SessionManager {
         tokio::select! {
             new_connection = self.idle_peers.get_connection() => {
                 if let Ok(Some((stream, peer_config))) = new_connection {
-                    let mut sessions = sessions_clone.lock().await;
+                    let mut sessions = sessions_clone.write().await;
                     let remote_ip = stream.peer_addr().expect("Stream has remote peer").ip();
                     if sessions.contains_key(&remote_ip) {
                         warn!(
@@ -137,7 +137,7 @@ impl SessionManager {
                     .map(|p| (p.remote_ip, p.clone()))
                     .collect();
                 { // Current Sessions lock scope
-                    let mut current_sessions = self.sessions.lock().await;
+                    let mut current_sessions = self.sessions.write().await;
                     let removed_peers = find_removed_peers(&mut current_sessions, &configs_by_network);
 
                     debug!(
