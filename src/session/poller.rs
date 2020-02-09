@@ -102,6 +102,14 @@ impl Poller {
         }
     }
 
+    pub fn replace_configs(&mut self, configs: Vec<Arc<PeerConfig>>) {
+        self.delay_queue.clear();
+        self.idle_peers.clear();
+        for config in configs.into_iter() {
+            self.upsert_config(config);
+        }
+    }
+
     pub async fn get_connection(
         &mut self,
     ) -> Result<Option<(TcpStream, Arc<PeerConfig>)>, io::Error> {

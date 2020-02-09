@@ -66,12 +66,12 @@ pub fn peer_to_detail(
             (
                 socket
                     .local_addr()
-                    .expect("Stream has local address")
-                    .to_string(),
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|_| "---".to_string()),
                 socket
                     .peer_addr()
-                    .expect("Stream has remote address")
-                    .to_string(),
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|_| "---".to_string()),
             )
         }),
     }

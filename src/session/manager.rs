@@ -83,6 +83,7 @@ impl SessionManager {
                         match err {
                             SessionError::Deconfigured => {
                                 session.notify(6, 3).await?;
+                                break; // Don't re-add the peer to Idle Peers
                             }
                             SessionError::HoldTimeExpired(_) => {
                                 session.notify(4, 0).await?;
@@ -153,9 +154,7 @@ impl SessionManager {
                     }
                 }
 
-                for (_, new_config) in configs_by_network {
-                    self.poller_tx.send(new_config.clone())?;
-                }
+                self.idle_peers.replace_configs(configs_by_network.into_iter().map(|(_, c)| c).collect());
                 Ok(None)
             },
             else => Ok(None),

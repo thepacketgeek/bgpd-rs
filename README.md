@@ -71,7 +71,7 @@ families = [
 ]
 ```
 
-You can send the BGPd process a `SIGHUP` to reload and update peer configs. The following items can be updated:
+You can send the BGPd process a `SIGHUP` [E.g. `pkill -HUP bgpd$`] to reload and update peer configs. The following items can be updated:
 
 ## Peers
 - Added & removed
@@ -189,8 +189,8 @@ $ cargo run -- -d -p 1179 ./examples/config.toml -vv
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
 ```sh
-$ cargo build
-$ sudo ./targets/debug/bgpd ./examples/config.toml -vv
+$ cargo build --release
+$ sudo ./targets/release/bgpd ./examples/config.toml -vv
 ```
 
 # Thanks to
