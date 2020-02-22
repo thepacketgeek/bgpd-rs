@@ -16,6 +16,8 @@ use super::{Poller, PollerTx, Session, SessionError, SessionUpdate};
 use crate::config::{PeerConfig, ServerConfig};
 use crate::rib::RIB;
 
+/// Struct to contain active [`Session`s](session/struct.Session.html) and managing
+/// of new incoming/outbound sessions (via `Poller`)
 pub struct SessionManager {
     pub(crate) idle_peers: Poller,
     // Active Sessions                  remote_ip: session

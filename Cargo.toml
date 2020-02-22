@@ -3,6 +3,13 @@ name = "bgpd"
 version = "0.1.0"
 authors = ["Mat Wood <mat@thepacketgeek.com>"]
 edition = "2018"
+license = "MIT"
+description = "BGP peering utility"
+homepage = "https://github.com/thepacketgeek/bgpd-rs"
+documentation = "https://docs.rs/crate/bgpd-rs"
+repository = "https://github.com/thepacketgeek/bgpd-rs"
+keywords = ["bgp", "network"]
+categories = ["network-programming"]
 
 [[bin]]
 name = "bgpd"

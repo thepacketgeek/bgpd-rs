@@ -18,6 +18,8 @@ pub fn from_file(path: &str) -> Result<ServerConfig> {
     Ok(ServerConfig::from_spec(spec))
 }
 
+/// Global BGP daemon options.
+/// `router_id`, `default_as`, and `poll_interval` can be overridden at the peer level
 #[derive(Debug)]
 pub struct ServerConfig {
     pub router_id: IpAddr,
@@ -26,8 +28,8 @@ pub struct ServerConfig {
     pub peers: Vec<Arc<PeerConfig>>,
 }
 
-/// In-Memory Server representation of a Peer config
-///   Has missing PeerConfigSpec items defaulted to Server values
+/// Peer (or peers) config and static advertisements
+/// - `peers` can specify a single peer IP address or a subnet+mask
 #[derive(Debug)]
 pub struct PeerConfig {
     pub remote_ip: IpNetwork,

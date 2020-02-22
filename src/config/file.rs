@@ -112,6 +112,7 @@ impl ServerConfigSpec {
     }
 }
 
+/// Specify static route/flow for a PeerConfig
 // Temporary way to select which routes to advertise to a peer
 // TODO: Replace this with import/export Policies
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

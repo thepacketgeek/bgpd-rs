@@ -20,11 +20,8 @@ use crate::config::{AdvertiseSource, PeerConfig};
 use crate::rib::{session::SessionRoutes, EntrySource, ExportedUpdate, Families};
 use crate::utils::{as_u32_be, format_time_as_elapsed, get_message_type, transform_u32_to_bytes};
 
-/// This is where a connected peer is managed.
-///
 /// A `Session` is a stream for processing BGP messages and
 /// handling peer timeouts
-///
 pub struct Session {
     pub(crate) addr: IpAddr,
     pub(crate) state: SessionState,

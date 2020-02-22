@@ -26,12 +26,12 @@ pub struct Args {
     /// Host port to use for BGP service
     #[structopt(short, long, default_value = "179")]
     port: u16,
-    /// Host address to use for HTTP API
+    /// Host address to use for JSON RPC API
     #[structopt(long, default_value = "127.0.0.1")]
-    http_addr: IpAddr,
-    /// Host port to use for HTTP API
+    api_addr: IpAddr,
+    /// Host port to use for JSON RPC API
     #[structopt(long, default_value = "8080")]
-    http_port: u16,
+    api_port: u16,
     /// Show debug logs (additive for trace logs)
     #[structopt(short, parse(from_occurrences))]
     pub verbose: u8,
@@ -64,8 +64,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut bgp_server = Server::new(config, bgp_listener, config_rx)?;
     // Setup JSON RPC Server
     let state = bgp_server.clone_state();
-    let http_socket: SocketAddr = (args.http_addr, args.http_port).into();
-    serve(http_socket, state).await;
+    let api_socket: SocketAddr = (args.api_addr, args.api_port).into();
+    serve(api_socket, state).await;
 
     let signals = Signals::new(&[SIGHUP])?;
     std::thread::spawn(move || {
