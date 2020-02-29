@@ -3,6 +3,7 @@ use std::net::IpAddr;
 
 use bgpd_rpc_lib as rpc;
 use colored::*;
+use jsonrpsee::{raw::RawClient, transport::http::HttpTransportClient};
 use itertools::Itertools;
 use structopt::StructOpt;
 
@@ -139,7 +140,8 @@ struct Flow {
 async fn run(args: Args) -> Result<(), Box<dyn Error>> {
     let mut client = {
         let base = format!("http://{}:{}", args.host, args.port);
-        jsonrpsee::http_raw_client(&base)
+        let transport_client = HttpTransportClient::new(&base);
+        RawClient::new(transport_client)
     };
     match args.cmd {
         Command::Show(show) => match show {

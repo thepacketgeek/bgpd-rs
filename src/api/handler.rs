@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use bgpd_rpc_lib::{Api, LearnedRoute, PeerDetail, PeerSummary};
-use jsonrpsee;
+use jsonrpsee::{raw::RawServer, transport::http::HttpTransportServer};
 use log::info;
 
 use crate::handler::State;
@@ -15,7 +15,10 @@ use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 pub async fn serve(socket: SocketAddr, state: Arc<State>) {
     info!("Starting JSON-RPC server on {}...", socket);
     tokio::spawn(async move {
-        let mut server = jsonrpsee::http_raw_server(&socket).await.unwrap();
+        let mut server = {
+            let transport_server = HttpTransportServer::bind(&socket).await.unwrap();
+            RawServer::new(transport_server)
+        };
 
         while let Ok(request) = Api::next_request(&mut server).await {
             match request {
