@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 use std::net::IpAddr;
+use ipnetwork::IpNetwork;
 
 use serde::{self, Deserialize, Serialize};
 
@@ -7,8 +8,8 @@ jsonrpsee::rpc_api! {
     pub Api {
         fn show_peers() -> Vec<PeerSummary>;
         fn show_peer_detail() -> Vec<PeerDetail>;
-        fn show_routes_learned(from_peer: Option<IpAddr>) -> Vec<LearnedRoute>;
-        fn show_routes_advertised(to_peer: Option<IpAddr>) -> Vec<LearnedRoute>;
+        fn show_routes_learned(from_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
+        fn show_routes_advertised(to_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
         fn advertise_route(route: RouteSpec) -> Result<LearnedRoute, String>;
         fn advertise_flow(flow: FlowSpec) -> Result<LearnedRoute, String>;
     }
@@ -88,7 +89,7 @@ impl std::default::Default for SpecAttributes {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RouteSpec {
     /// Prefix to advertise (E.g. "100.1.0.0/16" or "2620:100:ab::/64")
-    pub prefix: String,
+    pub prefix: IpNetwork,
     /// Next-hop to reach this prefix
     pub next_hop: IpAddr,
     #[serde(default = "SpecAttributes::default")]
@@ -96,7 +97,7 @@ pub struct RouteSpec {
 }
 
 impl RouteSpec {
-    pub fn new(prefix: String, next_hop: IpAddr) -> Self {
+    pub fn new(prefix: IpNetwork, next_hop: IpAddr) -> Self {
         Self {
             prefix,
             next_hop,

@@ -14,6 +14,7 @@ bgpd-rpc-lib = { path = "../../rpc_lib" }
 colored = "1.8.0"
 futures = { version = "0.3", features = ["async-await"] }
 itertools = "0.8.0"
+ipnetwork = "^0.16"
 jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", default-features = false, features = ["http"] }
 serde_json = "1.0"
 structopt = "0.2.18"

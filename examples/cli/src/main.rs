@@ -4,6 +4,7 @@ use std::net::IpAddr;
 use bgpd_rpc_lib as rpc;
 use colored::*;
 use jsonrpsee::{raw::RawClient, transport::http::HttpTransportClient};
+use ipnetwork::IpNetwork;
 use itertools::Itertools;
 use structopt::StructOpt;
 
@@ -67,8 +68,9 @@ enum Routes {
 #[derive(StructOpt, Debug)]
 #[structopt(rename_all = "kebab-case")]
 struct RouteOptions {
+    /// IP Address or Network Prefix to match route source
     #[structopt()]
-    peer: Option<IpAddr>,
+    peer: Option<IpNetwork>,
     // #[structopt()]
     // family: Option<AFI>,
 }
@@ -87,7 +89,7 @@ enum Advertise {
 struct Route {
     /// Prefix to advertise
     #[structopt()]
-    prefix: String,
+    prefix: IpNetwork,
     /// Next Hop for this route
     #[structopt()]
     next_hop: IpAddr,
@@ -212,7 +214,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         rpc::Api::show_routes_learned(&mut client, options.peer).await?;
                     routes.sort_by_key(|r| (r.afi.clone(), r.safi.clone()));
                     for (afi, routes) in &routes.into_iter().group_by(|r| r.afi.clone()) {
-                        for (safi, routes) in &routes.into_iter().group_by(|r| r.safi.clone()) {
+                        for (safi, routes) in &routes.group_by(|r| r.safi.clone()) {
                             println!("{} / {}", afi, safi);
                             let mut table = table::OutputTable::new();
                             for route in routes {
@@ -228,7 +230,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         rpc::Api::show_routes_advertised(&mut client, options.peer).await?;
                     routes.sort_by_key(|r| (r.afi.clone(), r.safi.clone()));
                     for (afi, routes) in &routes.into_iter().group_by(|r| r.afi.clone()) {
-                        for (safi, routes) in &routes.into_iter().group_by(|r| r.safi.clone()) {
+                        for (safi, routes) in &routes.group_by(|r| r.safi.clone()) {
                             println!("{} / {}", afi, safi);
                             let mut table = table::OutputTable::new();
                             for route in routes {
@@ -255,11 +257,11 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                 }
                 if let Some(as_path) = &route.as_path {
                     spec.attributes.as_path =
-                        as_path.split(" ").map(|asn| asn.to_string()).collect();
+                        as_path.split(' ').map(|asn| asn.to_string()).collect();
                 }
                 if let Some(communities) = &route.communities {
                     spec.attributes.communities = communities
-                        .split(" ")
+                        .split(' ')
                         .map(|comm| comm.to_string())
                         .collect();
                 }
@@ -270,7 +272,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         table.add_row(&LearnedRouteRow(advertised))?;
                         table.print();
                     }
-                    Err(err) => eprintln!("Error adding route: {}", err.to_string()),
+                    Err(err) => eprintln!("Error adding route: {}", err),
                 }
             }
             Advertise::Flow(flow) => {
@@ -295,11 +297,11 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                 }
                 if let Some(as_path) = &flow.as_path {
                     spec.attributes.as_path =
-                        as_path.split(" ").map(|asn| asn.to_string()).collect();
+                        as_path.split(' ').map(|asn| asn.to_string()).collect();
                 }
                 if let Some(communities) = &flow.communities {
                     spec.attributes.communities = communities
-                        .split(" ")
+                        .split(' ')
                         .map(|comm| comm.to_string())
                         .collect();
                 }
@@ -310,7 +312,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         table.add_row(&LearnedRouteRow(advertised))?;
                         table.print();
                     }
-                    Err(err) => eprintln!("Error adding flow: {}", err.to_string()),
+                    Err(err) => eprintln!("Error adding flow: {}", err),
                 }
             }
         },

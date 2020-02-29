@@ -111,11 +111,22 @@ pub fn prefix_from_string(prefix: &str) -> std::result::Result<Prefix, ParseErro
     }
 }
 
+pub fn prefix_from_network(network: &IpNetwork) -> Prefix {
+    let (protocol, octets) = match network {
+        IpNetwork::V4(v4) => (AFI::IPV4, v4.ip().octets().to_vec()),
+        IpNetwork::V6(v6) => (AFI::IPV6, v6.ip().octets().to_vec()),
+    };
+    Prefix {
+        protocol,
+        length: network.prefix(),
+        prefix: octets,
+    }
+}
+
 pub fn parse_route_spec(
     spec: &RouteSpec,
 ) -> Result<(Family, Vec<PathAttribute>, NLRIEncoding), ParseError> {
-    let prefix =
-        prefix_from_string(&spec.prefix).map_err(|err| ParseError::new(err.to_string()))?;
+    let prefix = prefix_from_network(&spec.prefix);
     let mut attributes = parse_attributes(&spec.attributes)?;
     attributes.push(PathAttribute::NEXT_HOP(spec.next_hop));
     Ok((

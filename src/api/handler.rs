@@ -86,11 +86,22 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 }
                 Api::ShowRoutesLearned { respond, from_peer } => {
                     let mut output: Vec<LearnedRoute> = vec![];
-                    let rib = state.rib.read().await;
-                    let entries = if let Some(peer) = from_peer {
-                        rib.get_routes_from_peer(peer)
-                    } else {
-                        rib.get_routes()
+                    let entries = {
+                        let rib = state.rib.read().await;
+                        if let Some(peer) = from_peer {
+                            let sessions = state.sessions.read().await;
+                            let active_sessions = sessions.sessions.read().await;
+                            active_sessions
+                                .keys()
+                                // Find peers contained in the `from_peer` prefix
+                                .filter(|addr| peer.contains(**addr))
+                                // Collect routes for each matching peer
+                                .map(|p| rib.get_routes_from_peer(*p))
+                                .flatten()
+                                .collect::<Vec<_>>()
+                        } else {
+                            rib.get_routes()
+                        }
                     };
                     let routes: Vec<_> = entries.into_iter().map(entry_to_route).collect();
                     output.extend(routes);
@@ -102,12 +113,9 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     let active_sessions = sessions.sessions.read().await;
                     let routes: Vec<LearnedRoute> = active_sessions
                         .values()
-                        .filter(|s| {
-                            if let Some(addr) = to_peer {
-                                s.addr == addr
-                            } else {
-                                true
-                            }
+                        .filter(|s| match to_peer {
+                            Some(prefix) => prefix.contains(s.addr),
+                            _ => true,
                         })
                         .map(|s| {
                             s.routes

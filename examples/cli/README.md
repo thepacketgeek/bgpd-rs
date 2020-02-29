@@ -84,6 +84,42 @@ IPv6 / Unicast
  127.0.0.2      2621:a:1337::/64     3001:1::1           00:07:46  IGP                     404     100                   00:07:46
 ```
 
+Learned routes can be filtered with a peer IP Addr or prefix:
+```sh
+[~/bgpd-rs/examples/cli] $ cargo build
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes learned 172.16.20.2
+IPv4 / Unicast
+ Received From  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities           Age
+--------------------------------------------------------------------------------------------------------------------------------
+ 172.16.20.2    172.16.20.0/24  172.16.20.2   00:07:54  IGP         100                                                00:07:54
+
+IPv6 / Unicast
+ Received From  Prefix               Next Hop            Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------------------
+ 172.16.20.2    3001:172:16:20::/64  ::ffff:172.16.20.2  00:07:54  IGP         100                                       00:07:54
+```
+
+```sh
+[~/bgpd-rs/examples/cli] $ cargo build
+[~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes learned 127.0.0.0/24
+IPv4 / Unicast
+ Received From  Prefix          Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities           Age
+--------------------------------------------------------------------------------------------------------------------------------
+ 127.0.0.2      2.100.0.0/24    127.0.0.2     00:07:46  IGP                     500     100      target:65000:1.1.1.1  00:07:46
+ 127.0.0.2      2.200.0.0/24    127.0.0.2     00:07:46  IGP                             100 200                        00:07:46
+
+IPv6 / Flowspec
+ Received From  Prefix                                          Next Hop  Age       Origin  Local Pref  Metric  AS Path  Communities     Age
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ 127.0.0.2      Dst: 3001:99:b::10/128, Src: 3001:99:a::10/128            00:00:39  IGP     100                          redirect:6:302  00:00:39
+
+IPv6 / Unicast
+ Received From  Prefix               Next Hop            Age       Origin      Local Pref  Metric  AS Path  Communities  Age
+----------------------------------------------------------------------------------------------------------------------------------
+ 127.0.0.2      2621:a:10::/64       3001:1::1           00:07:46  IGP                             600 650               00:07:46
+ 127.0.0.2      2621:a:1337::/64     3001:1::1           00:07:46  IGP                     404     100                   00:07:46
+```
+
 Advertised routes:
 ```sh
 [~/bgpd-rs/examples/cli] $ ./targets/debug/bgpd-cli show routes advertised

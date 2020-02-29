@@ -134,6 +134,7 @@ dependencies = [
 name = "bgpd-rpc-lib"
 version = "0.1.0"
 dependencies = [
+ "ipnetwork",
  "jsonrpsee",
  "serde",
  "serde_json",
