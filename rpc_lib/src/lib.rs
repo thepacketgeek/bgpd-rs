@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
-use std::net::IpAddr;
 use ipnetwork::IpNetwork;
+use std::net::IpAddr;
 
 use serde::{self, Deserialize, Serialize};
 
@@ -12,6 +12,7 @@ jsonrpsee::rpc_api! {
         fn show_routes_advertised(to_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
         fn advertise_route(route: RouteSpec) -> Result<LearnedRoute, String>;
         fn advertise_flow(flow: FlowSpec) -> Result<LearnedRoute, String>;
+        fn disable(prefix: IpNetwork) -> Result<Vec<IpAddr>, String>;
     }
 }
 

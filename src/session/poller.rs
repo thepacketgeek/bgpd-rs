@@ -86,6 +86,23 @@ impl Poller {
         }
     }
 
+    pub fn get_config_for_peer(&self, peer: IpAddr) -> Option<Arc<PeerConfig>> {
+        if let Some(network) = self.idle_peers.keys().find(|n| n.contains(peer)) {
+            self.idle_peers.get(&network).map(|c| c.get_config())
+        } else {
+            None
+        }
+    }
+
+    pub fn pop_config_for_peer(&self, peer: IpAddr) -> Option<Arc<PeerConfig>> {
+        self.idle_peers.remove(&peer)
+        // if let Some(network) = self.idle_peers.keys().find(|n| n.contains(peer)) {
+        //     self.idle_peers.get(&network).map(|c| c.get_config())
+        // } else {
+        //     None
+        // }
+    }
+
     pub fn upsert_config(&mut self, config: Arc<PeerConfig>) {
         let network = config.remote_ip;
 
@@ -122,7 +139,7 @@ impl Poller {
         tokio::select! {
             incoming = listener => {
                 if let Ok(Ok((stream, socket))) = incoming {
-                    if let Some(config) = get_config_for_peer(&self.idle_peers, socket.ip()) {
+                    if let Some(config) = self.get_config_for_peer(socket.ip()) {
                         if config.enabled {
                             let config = if get_host_address(&config.remote_ip).is_some() {
                                 // Only remove from idle peers if this a for a single peer
@@ -154,7 +171,7 @@ impl Poller {
                     trace!("Poller outbound triggered for {}", addr);
                     // Peer may not be present if an incoming connection
                     // was established simultaneously
-                    if let Some(config) = get_config_for_peer(&self.idle_peers, addr) {
+                    if let Some(config) = self.get_config_for_peer(addr) {
                         if config.enabled && !config.passive {
                             let peer = self.idle_peers.remove(&config.remote_ip).expect("Idle peer exists");
                             match peer.connect(SocketAddr::new(local_outbound_addr.ip(), 0u16)).await {
@@ -187,16 +204,5 @@ impl Poller {
 impl fmt::Display for Poller {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<Poller peers={}>", self.idle_peers.len())
-    }
-}
-
-fn get_config_for_peer(
-    idle_peers: &HashMap<IpNetwork, IdlePeer>,
-    peer: IpAddr,
-) -> Option<Arc<PeerConfig>> {
-    if let Some(network) = idle_peers.keys().find(|n| n.contains(peer)) {
-        idle_peers.get(&network).map(|c| c.get_config())
-    } else {
-        None
     }
 }

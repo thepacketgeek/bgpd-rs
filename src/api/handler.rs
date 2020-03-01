@@ -10,6 +10,7 @@ use crate::rib::EntrySource;
 
 use super::peers::{peer_to_detail, peer_to_summary};
 use super::routes::entry_to_route;
+use crate::config::PeerConfig;
 use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 
 pub async fn serve(socket: SocketAddr, state: Arc<State>) {
@@ -156,6 +157,35 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                         Err(err) => Err(err.to_string()),
                     };
                     respond.ok(response).await;
+                }
+                Api::Disable { respond, prefix } => {
+                    dbg!(&prefix);
+                    let peers_to_disable = {
+                        let sessions = state.sessions.read().await;
+                        let active_sessions = sessions.sessions.read().await;
+                        active_sessions
+                            .keys()
+                            // Find peers contained in the `from_peer` prefix
+                            .filter(|addr| prefix.contains(**addr))
+                            .cloned()
+                            // Collect routes for each matching peer
+                            .collect::<Vec<_>>()
+                    };
+                    {
+                        let mut sessions = state.sessions.write().await;
+                        for peer in &peers_to_disable {
+                            sessions.deconfigure_peer(*peer).await.unwrap();
+                            // TODO: Update config so peer remains deconfigured
+                            // if let Some(mut config) =
+                            //     &sessions.idle_peers.pop_config_for_peer(*peer)
+                            // {
+                            //     let mut new_config = config.make_mut();
+                            //     new_config.enabled = false;
+                            //     sessions.idle_peers.upsert_config(Arc::new(new_config));
+                            // }
+                        }
+                    }
+                    respond.ok(Ok(peers_to_disable)).await;
                 }
             }
         }

@@ -29,11 +29,21 @@ struct Args {
 #[structopt(rename_all = "kebab-case")]
 /// CLI to query BGPd
 enum Command {
-    #[structopt()]
     /// View details about BGPd
+    #[structopt()]
     Show(Show),
     /// Send routes to be advertised
     Advertise(Advertise),
+    /// Disable a peer by IP Address
+    #[structopt()]
+    Disable(ControlOptions),
+}
+
+#[derive(StructOpt, Debug)]
+#[structopt(rename_all = "kebab-case")]
+struct ControlOptions {
+    #[structopt()]
+    prefix: IpNetwork,
 }
 
 #[derive(StructOpt, Debug)]
@@ -316,6 +326,15 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                 }
             }
         },
+        Command::Disable(options) => {
+            match rpc::Api::disable(&mut client, options.prefix).await? {
+                Ok(disabled) => {
+                    let peers = disabled.into_iter().map(|p| p.to_string()).join(", ");
+                    println!("Disabled peer(s): {}", peers);
+                }
+                Err(err) => eprintln!("Error disabling peer(s): {}", err),
+            }
+        }
     }
     Ok(())
 }

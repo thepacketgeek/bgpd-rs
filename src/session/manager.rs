@@ -52,6 +52,14 @@ impl SessionManager {
         self.config.peers.to_vec()
     }
 
+    pub async fn deconfigure_peer(&mut self, peer: IpAddr) -> Result<(), Box<dyn Error>> {
+        warn!("Session ended with {}, peer de-configured", peer);
+        let mut current_sessions = self.sessions.write().await;
+        let mut session = current_sessions.remove(&peer).expect("Active session");
+        session.notify(6 /* Cease */, 3 /* Deconfigured */).await?;
+        Ok(())
+    }
+
     pub async fn get_update(
         &mut self,
         rib: Arc<RwLock<RIB>>,
@@ -139,21 +147,19 @@ impl SessionManager {
                     .iter()
                     .map(|p| (p.remote_ip, p.clone()))
                     .collect();
-                { // Current Sessions lock scope
+                let removed_peers = {
                     let mut current_sessions = self.sessions.write().await;
-                    let removed_peers = find_removed_peers(&mut current_sessions, &configs_by_network);
+                    find_removed_peers(&mut current_sessions, &configs_by_network)
+                };
 
-                    debug!(
-                        "Received config [{} peer configs, {} removed peer configs]",
-                        configs_by_network.len(),
-                        removed_peers.len()
-                    );
+                debug!(
+                    "Received config [{} peer configs, {} removed peer configs]",
+                    configs_by_network.len(),
+                    removed_peers.len()
+                );
 
-                    for removed_ip in removed_peers {
-                        warn!("Session ended with {}, peer de-configured", removed_ip);
-                        let mut session = current_sessions.remove(&removed_ip).expect("Active session");
-                        session.notify(6 /* Cease */, 3/* Deconfigured */).await?;
-                    }
+                for removed_ip in removed_peers {
+                    self.deconfigure_peer(removed_ip).await?;
                 }
 
                 self.idle_peers.replace_configs(configs_by_network.into_iter().map(|(_, c)| c).collect());

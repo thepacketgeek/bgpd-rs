@@ -30,7 +30,7 @@ pub struct ServerConfig {
 
 /// Peer (or peers) config and static advertisements
 /// - `peers` can specify a single peer IP address or a subnet+mask
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PeerConfig {
     pub remote_ip: IpNetwork,
     pub remote_as: u32,
