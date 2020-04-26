@@ -36,6 +36,7 @@ pub struct Session {
 }
 
 impl Session {
+    /// Build a newly created session from the peer config & BGP Message Stream
     pub fn new(config: Arc<PeerConfig>, protocol: MessageProtocol) -> Session {
         let hold_timer = config.hold_timer;
         let capabilities: Vec<OpenCapability> = vec![OpenCapability::FourByteASN(config.local_as)]
@@ -267,7 +268,7 @@ impl Session {
         );
         self.router_id = router_id;
         let received_capabilities = Capabilities::from_parameters(received_open.parameters);
-        let common_capabilities = self.capabilities.common(&received_capabilities)?;
+        let common_capabilities = common_capabilities(&self.capabilities, &received_capabilities)?;
         Ok((common_capabilities, hold_timer))
     }
 
@@ -444,4 +445,65 @@ fn asn_from_open(open: &Open) -> u32 {
         .find(|c| c.is_some())
         .unwrap_or_else(|| Some(u32::from(open.peer_asn)))
         .unwrap()
+}
+
+/// Work out the common set of capabilities between peer config and the received peer's capabilities
+pub fn common_capabilities(
+    a: &Capabilities,
+    b: &Capabilities,
+) -> Result<Capabilities, SessionError> {
+    // And (manually) build an intersection between the two
+    let mut negotiated = Capabilities::default();
+
+    negotiated.MP_BGP_SUPPORT = a
+        .MP_BGP_SUPPORT
+        .intersection(&b.MP_BGP_SUPPORT)
+        .copied()
+        .collect();
+    negotiated.ROUTE_REFRESH_SUPPORT = a.ROUTE_REFRESH_SUPPORT & b.ROUTE_REFRESH_SUPPORT;
+    negotiated.OUTBOUND_ROUTE_FILTERING_SUPPORT = a
+        .OUTBOUND_ROUTE_FILTERING_SUPPORT
+        .intersection(&b.OUTBOUND_ROUTE_FILTERING_SUPPORT)
+        .copied()
+        .collect();
+
+    // Attempt at a HashMap intersection. We can be a bit lax here because this isn't a real BGP implementation
+    // so we can not care too much about the values for now.
+    negotiated.EXTENDED_NEXT_HOP_ENCODING = a
+        .EXTENDED_NEXT_HOP_ENCODING
+        .iter()
+        // .filter(|((afi, safi), _)| b.EXTENDED_NEXT_HOP_ENCODING.contains_key(&(*afi, *safi)))
+        .map(|((afi, safi), nexthop)| ((*afi, *safi), *nexthop))
+        .collect();
+
+    negotiated.BGPSEC_SUPPORT = a.BGPSEC_SUPPORT & b.BGPSEC_SUPPORT;
+
+    negotiated.MULTIPLE_LABELS_SUPPORT = a
+        .MULTIPLE_LABELS_SUPPORT
+        .iter()
+        .filter(|((afi, safi), _)| b.MULTIPLE_LABELS_SUPPORT.contains_key(&(*afi, *safi)))
+        .map(|((afi, safi), val)| ((*afi, *safi), *val))
+        .collect();
+
+    negotiated.GRACEFUL_RESTART_SUPPORT = a
+        .GRACEFUL_RESTART_SUPPORT
+        .intersection(&b.GRACEFUL_RESTART_SUPPORT)
+        .copied()
+        .collect();
+    negotiated.FOUR_OCTET_ASN_SUPPORT = a.FOUR_OCTET_ASN_SUPPORT & b.FOUR_OCTET_ASN_SUPPORT;
+
+    negotiated.ADD_PATH_SUPPORT = a
+        .ADD_PATH_SUPPORT
+        .iter()
+        .filter(|((afi, safi), _)| b.ADD_PATH_SUPPORT.contains_key(&(*afi, *safi)))
+        .map(|((afi, safi), val)| ((*afi, *safi), *val))
+        .collect();
+    negotiated.EXTENDED_PATH_NLRI_SUPPORT = !negotiated.ADD_PATH_SUPPORT.is_empty();
+
+    negotiated.ENHANCED_ROUTE_REFRESH_SUPPORT =
+        a.ENHANCED_ROUTE_REFRESH_SUPPORT & b.ENHANCED_ROUTE_REFRESH_SUPPORT;
+    negotiated.LONG_LIVED_GRACEFUL_RESTART =
+        a.LONG_LIVED_GRACEFUL_RESTART & b.LONG_LIVED_GRACEFUL_RESTART;
+
+    Ok(negotiated)
 }
