@@ -13,7 +13,6 @@ use bgpd_rpc_lib::{FlowSpec, RouteSpec, SpecAttributes};
 use ipnetwork::{IpNetwork, NetworkSize};
 
 use crate::rib::{Community, CommunityList, Family};
-use crate::utils::{as_u64_be, transform_u32_to_bytes};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -85,7 +84,14 @@ pub fn asn_from_dotted(value: &str) -> std::result::Result<u32, ParseError> {
     Ok((chunks[1] * 65536) + chunks[0])
 }
 
-pub fn prefix_from_string(prefix: &str) -> std::result::Result<Prefix, ParseError> {
+/// Convert a CIDR prefix (E.g. "192.168.0.0/24") to a bgp_rs::Prefix
+/// ```
+/// use bgp_rs::Prefix;
+/// use bgpd::utils::prefix_from_str;
+/// let prefix = prefix_from_str("192.168.10.0/24").unwrap();
+/// assert_eq!(prefix.length, 24);
+/// ```
+pub fn prefix_from_str(prefix: &str) -> std::result::Result<Prefix, ParseError> {
     if let Some(i) = prefix.find('/') {
         let (addr, mask) = prefix.split_at(i);
         let mask = &mask[1..]; // Skip remaining '/'
@@ -223,7 +229,7 @@ impl From<FlowAction> for PathAttribute {
             TrafficRate(bps) => {
                 let mut comm_bytes = [0x80, 0x06, 0, 0, 0, 0, 0, 0];
                 comm_bytes[4..8].clone_from_slice(&bps.to_be_bytes());
-                as_u64_be(comm_bytes)
+                u64::from_be_bytes(comm_bytes)
             }
             TrafficAction((sample, terminal)) => {
                 let mut comm_bytes = [0x80, 0x07, 0, 0, 0, 0, 0, 0];
@@ -236,24 +242,24 @@ impl From<FlowAction> for PathAttribute {
                     val |= 0b1;
                 }
                 comm_bytes[7] = val;
-                as_u64_be(comm_bytes)
+                u64::from_be_bytes(comm_bytes)
             }
             Redirect(comm) => match comm {
                 Community::STANDARD(val) => {
                     let mut comm_bytes = [0u8; 8];
-                    let bytes = transform_u32_to_bytes(val);
+                    let bytes = val.to_be_bytes();
                     comm_bytes[0..2].clone_from_slice(&[0x80, 0x08]);
                     comm_bytes[2..4].clone_from_slice(&[bytes[0], bytes[1]]);
                     comm_bytes[4..6].clone_from_slice(&[0; 2]);
                     comm_bytes[6..8].clone_from_slice(&[bytes[2], bytes[3]]);
-                    as_u64_be(comm_bytes)
+                    u64::from_be_bytes(comm_bytes)
                 }
                 _ => unreachable!(),
             },
             MarkDSCP(dscp) => {
                 let mut comm_bytes = [0x80, 0x09, 0, 0, 0, 0, 0, 0];
                 comm_bytes[7] = dscp;
-                as_u64_be(comm_bytes)
+                u64::from_be_bytes(comm_bytes)
             }
         };
         PathAttribute::EXTENDED_COMMUNITIES(vec![community])
@@ -313,12 +319,12 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
     }
     match words[0].to_lowercase().as_str() {
         "destination" => {
-            let dest = prefix_from_string(words[1])
+            let dest = prefix_from_str(words[1])
                 .map_err(|_| ParseError::new(format!("Unable to parse prefix '{}'", words[1])))?;
             Ok(FlowspecFilter::DestinationPrefix(dest))
         }
         "source" => {
-            let src = prefix_from_string(words[1])
+            let src = prefix_from_str(words[1])
                 .map_err(|_| ParseError::new(format!("Unable to parse prefix '{}'", words[1])))?;
             Ok(FlowspecFilter::SourcePrefix(src))
         }
@@ -446,11 +452,11 @@ mod tests {
 
     #[test]
     fn test_prefix_from_string() {
-        let prefix = prefix_from_string("1.1.1.0/24").unwrap();
+        let prefix = prefix_from_str("1.1.1.0/24").unwrap();
         assert_eq!(prefix.length, 24);
         assert_eq!(prefix.prefix, [1, 1, 1, 0]);
 
-        let prefix = prefix_from_string("2001:10::2/64").unwrap();
+        let prefix = prefix_from_str("2001:10::2/64").unwrap();
         assert_eq!(prefix.length, 64);
         assert_eq!(
             prefix.prefix,

@@ -3,8 +3,6 @@ use std::net::IpAddr;
 use bgp_rs::Message;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
-use super::*;
-
 pub fn get_message_type(message: &Message) -> &'static str {
     match message {
         Message::KeepAlive => "KEEPALIVE",
@@ -21,12 +19,12 @@ pub fn u32_to_dotted(asn: u32, sep: char) -> String {
     if asn < std::u16::MAX as u32 {
         format!("{}", asn)
     } else {
-        let bytes = transform_u32_to_bytes(asn);
+        let bytes = asn.to_be_bytes();
         format!(
             "{}{}{}",
-            as_u16_be([bytes[0], bytes[1]]),
+            u16::from_be_bytes([bytes[0], bytes[1]]),
             sep,
-            as_u16_be([bytes[2], bytes[3]])
+            u16::from_be_bytes([bytes[2], bytes[3]])
         )
     }
 }

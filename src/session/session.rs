@@ -18,7 +18,7 @@ use super::{HoldTimer, MessageCounts};
 use super::{SessionError, SessionState, SessionUpdate};
 use crate::config::{AdvertiseSource, PeerConfig};
 use crate::rib::{session::SessionRoutes, EntrySource, ExportedUpdate, Families};
-use crate::utils::{as_u32_be, format_time_as_elapsed, get_message_type, transform_u32_to_bytes};
+use crate::utils::{format_time_as_elapsed, get_message_type};
 
 /// A `Session` is a stream for processing BGP messages and
 /// handling peer timeouts
@@ -252,7 +252,7 @@ impl Session {
         &mut self,
         received_open: Open,
     ) -> Result<(Capabilities, u16), SessionError> {
-        let router_id = IpAddr::from(transform_u32_to_bytes(received_open.identifier));
+        let router_id = IpAddr::from(received_open.identifier.to_be_bytes());
         let remote_asn = asn_from_open(&received_open);
         if remote_asn != self.config.remote_as {
             return Err(SessionError::OpenAsnMismatch(
@@ -297,7 +297,7 @@ impl Session {
             version: 4,
             peer_asn: two_byte_asn,
             hold_timer: self.hold_timer.hold_timer,
-            identifier: as_u32_be(router_id.octets()),
+            identifier: u32::from_be_bytes(router_id.octets()),
             parameters: vec![OpenParameter::Capabilities(capabilities)],
         }
     }

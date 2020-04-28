@@ -6,7 +6,7 @@ use std::slice::Iter;
 
 use serde::Serialize;
 
-use crate::utils::{transform_u32_to_bytes, u32_to_dotted};
+use crate::utils::u32_to_dotted;
 
 #[derive(Serialize, Debug, Copy, Clone)]
 pub enum Community {
@@ -118,17 +118,13 @@ fn ext_community_to_display(value: u64) -> String {
         0x1 => {
             let addr: u32 = ((value >> 24) & 0xffff_ffff) as u32;
             let asn: u16 = (value & 0xffff) as u16;
-            format!("{}:{}", IpAddr::from(transform_u32_to_bytes(addr)), asn)
+            format!("{}:{}", IpAddr::from(addr.to_be_bytes()), asn)
         }
         // 4-octet AS Specific BGP Extended Community (RFC 5668)
         0x2 => {
             let asn: u16 = ((value >> 32) & 0xffff) as u16;
             let addr: u32 = (value & 0xffff_ffff) as u32;
-            format!(
-                "target:{}:{}",
-                asn,
-                IpAddr::from(transform_u32_to_bytes(addr))
-            )
+            format!("target:{}:{}", asn, IpAddr::from(addr.to_be_bytes()))
         }
         // Opaque Extended Community (RFC 4360)
         0x3 => format!("opaque:{}", value),

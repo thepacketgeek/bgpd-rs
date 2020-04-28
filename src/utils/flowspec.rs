@@ -1,6 +1,3 @@
-
-
-
 fn parse_flowspec_action(action: &str) -> Result<u64, ParseError> {
     let words: Vec<_> = action.split_whitespace().collect();
     if words.is_empty() {
@@ -28,7 +25,7 @@ fn parse_flowspec_action(action: &str) -> Result<u64, ParseError> {
                 .map_err(|_| {
                     ParseError::new(format!("Unable to parse redirect community '{}'", words[1]))
                 })?;
-            Ok(as_u64_be(comm_bytes))
+            Ok(u64::from_be_bytes(comm_bytes))
         }
         _ => Err(ParseError::new(format!(
             "Unsupported Flowspec Action: {}",
@@ -49,7 +46,7 @@ fn parse_flowspec_match(action: &str) -> Result<FlowspecFilter, ParseError> {
                     "Prefix must provide a community",
                 )));
             }
-            let dest = prefix_from_string(words[1])
+            let dest = prefix_from_str(&words[1])
                 .map_err(|_| ParseError::new(format!("Unable to parse prefix '{}'", words[1])))?;
             Ok(FlowspecFilter::DestinationPrefix(dest))
         }
@@ -59,7 +56,7 @@ fn parse_flowspec_match(action: &str) -> Result<FlowspecFilter, ParseError> {
                     "Prefix must provide a community",
                 )));
             }
-            let src = prefix_from_string(words[1])
+            let src = prefix_from_str(&words[1])
                 .map_err(|_| ParseError::new(format!("Unable to parse prefix '{}'", words[1])))?;
             Ok(FlowspecFilter::SourcePrefix(src))
         }
