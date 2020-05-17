@@ -173,7 +173,7 @@ impl RIB {
             .entry(group_key)
             .or_insert_with(|| Vec::with_capacity(1));
         entry.push(RibEntry {
-            source: EntrySource::Config,
+            source: EntrySource::Api,
             family,
             timestamp: Utc::now(),
             nlri,
