@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
-use std::net::IpAddr;
 use ipnetwork::IpNetwork;
+use std::net::IpAddr;
 
 use serde::{self, Deserialize, Serialize};
 

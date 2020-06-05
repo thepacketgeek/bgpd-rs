@@ -9,9 +9,9 @@ use bgp_rs::{
     flowspec::{FlowspecFilter, NumericOperator},
     ASPath, NLRIEncoding, Origin, PathAttribute, Prefix, Segment, AFI, SAFI,
 };
-use bgpd_rpc_lib::{FlowSpec, RouteSpec, SpecAttributes};
 use ipnetwork::{IpNetwork, NetworkSize};
 
+use crate::api::rpc::{FlowSpec, RouteSpec, SpecAttributes};
 use crate::rib::{Community, CommunityList, Family};
 
 #[derive(Debug)]

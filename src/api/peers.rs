@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bgp_rs::Capabilities;
-use bgpd_rpc_lib::{PeerDetail, PeerSummary};
 
+use crate::api::rpc::{PeerDetail, PeerSummary};
 use crate::config::PeerConfig;
 use crate::session::{Session, SessionState};
 use crate::utils::{format_time_as_elapsed, get_host_address};

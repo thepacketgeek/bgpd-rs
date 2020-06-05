@@ -139,7 +139,7 @@ $ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc"
 }
 ```
 
-Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API (and Announce routes too!)
+The `bgpd` [CLI](src/cli/mod.rs) can also be used to view peer & route information via the BGPd API (and announce routes too!)
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.

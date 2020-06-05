@@ -15,19 +15,24 @@ categories = ["network-programming"]
 name = "bgpd"
 path = "src/main.rs"
 
+[features]
+default = ["cli"]
+cli = ["colored", "prettytable-rs"]
+
 [dependencies]
-bgp-rs = { git = "https://github.com/DevQps/bgp-rs", features = ["flowspec"] }
-bgpd-rpc-lib = { path = "rpc_lib" }
+bgp-rs = { version = "0.6.0", features = ["flowspec"] }
 bytes = "^0.5.3"
 byteorder = "1.3.1"
 chrono = { version = "0.4.7", features = ["serde"] }
+colored = { version = "1.8", optional = true }
 env_logger = "0.6.1"
 ipnetwork = "^0.16"
 itertools = "^0.8.1"
-jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", default-features = false, features = ["http"] }
+jsonrpsee = { version = "0.1.0", features = ["http"] }
 futures = { version = "^0.3" }
 log = "0.4.6"
 net2 = "0.2.33"
+prettytable-rs = { version = "0.8", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 signal-hook = "0.1.11"

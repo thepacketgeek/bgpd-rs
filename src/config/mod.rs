@@ -4,12 +4,12 @@ pub use file::AdvertiseSource;
 
 use std::collections::HashSet;
 use std::io::Result;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use bgpd_rpc_lib::{FlowSpec, RouteSpec};
 use ipnetwork::IpNetwork;
 
+use crate::api::rpc::{FlowSpec, RouteSpec};
 use crate::rib::Family;
 
 /// Parse a TOML config file and return a ServerConfig
@@ -24,6 +24,8 @@ pub fn from_file(path: &str) -> Result<ServerConfig> {
 pub struct ServerConfig {
     pub router_id: IpAddr,
     pub default_as: u32,
+    pub bgp_socket: SocketAddr,
+    pub api_socket: SocketAddr,
     pub poll_interval: u16,
     pub peers: Vec<Arc<PeerConfig>>,
 }
@@ -79,6 +81,8 @@ impl ServerConfig {
         Self {
             router_id: spec.router_id,
             default_as: spec.default_as,
+            bgp_socket: spec.bgp_socket,
+            api_socket: spec.api_socket,
             poll_interval: spec.poll_interval,
             peers,
         }

@@ -37,6 +37,8 @@
 
 /// JSON RPC API
 pub mod api;
+/// BGPd CLI for interacting with a running BGPd process
+pub mod cli;
 /// TOML Config Manager
 /// Peers and their config are defined in `TOML` format.
 ///

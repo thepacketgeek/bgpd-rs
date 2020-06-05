@@ -1,10 +1,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use bgpd_rpc_lib::{Api, LearnedRoute, PeerDetail, PeerSummary};
 use jsonrpsee::{raw::RawServer, transport::http::HttpTransportServer};
 use log::info;
 
+use crate::api::rpc::{Api, LearnedRoute, PeerDetail, PeerSummary};
 use crate::handler::State;
 use crate::rib::EntrySource;
 

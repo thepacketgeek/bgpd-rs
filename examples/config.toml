@@ -1,6 +1,8 @@
 router_id = "1.1.1.1"       # Default Router ID for the service
 default_as = 65000
 poll_interval = 5
+bgp_socket = "0.0.0.0:1179"   # Listen on all interfaces (IPv4 & IPv6)
+api_socket = "0.0.0.0:8080"   # Listen on all interfaces (IPv4 & IPv6)
 
 
 [[peers]]

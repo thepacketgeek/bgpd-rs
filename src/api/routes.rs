@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use bgp_rs::{NLRIEncoding, Segment};
-use bgpd_rpc_lib::LearnedRoute;
 
+use crate::api::rpc::LearnedRoute;
 use crate::rib::ExportEntry;
 use crate::utils::{format_time_as_elapsed, u32_to_dotted};
 
