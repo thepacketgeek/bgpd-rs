@@ -14,7 +14,6 @@ use tokio::{
 use super::codec::{MessageCodec, MessageProtocol};
 use super::{Poller, PollerTx, Session, SessionError, SessionUpdate};
 use crate::config::{PeerConfig, ServerConfig};
-use crate::rib::RIB;
 
 /// Struct to contain active [`Session`s](session/struct.Session.html) and managing
 /// of new incoming/outbound sessions (via `Poller`)
@@ -52,10 +51,7 @@ impl SessionManager {
         self.config.peers.to_vec()
     }
 
-    pub async fn get_update(
-        &mut self,
-        rib: Arc<RwLock<RIB>>,
-    ) -> Result<Option<SessionUpdate>, Box<dyn Error>> {
+    pub async fn get_update(&mut self) -> Result<Option<SessionUpdate>, Box<dyn Error>> {
         let sessions_clone = Arc::clone(&self.sessions);
 
         // TODO: Figure out how to select_all over sessions
@@ -72,8 +68,8 @@ impl SessionManager {
             let mut ended_sessions: Vec<IpAddr> = Vec::new();
             let mut sessions = self.sessions.write().await;
             for (remote_ip, session) in sessions.iter_mut() {
-                let routes = rib.read().await.get_routes_for_peer(session.addr);
-                session.routes.insert_routes(routes);
+                // let routes = rib.read().await.get_routes_for_peer(session.addr);
+                // session.routes.insert_routes(routes);
 
                 match session.run().await {
                     Ok(update) => {

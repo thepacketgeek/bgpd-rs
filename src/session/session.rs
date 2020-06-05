@@ -5,8 +5,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use bgp_rs::{
-    ASPath, Capabilities, MPReachNLRI, Message, NLRIEncoding, Notification, Open, OpenCapability,
-    OpenParameter, PathAttribute, Segment, Update, AFI, SAFI,
+    Capabilities, Message, Notification, Open, OpenCapability, OpenParameter, RouteRefresh, Update,
 };
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, StreamExt};
@@ -16,8 +15,7 @@ use tokio;
 use super::codec::MessageProtocol;
 use super::{HoldTimer, MessageCounts};
 use super::{SessionError, SessionState, SessionUpdate};
-use crate::config::{AdvertiseSource, PeerConfig};
-use crate::rib::{session::SessionRoutes, EntrySource, ExportedUpdate, Families};
+use crate::config::PeerConfig;
 use crate::utils::{format_time_as_elapsed, get_message_type};
 
 /// A `Session` is a stream for processing BGP messages and
@@ -31,7 +29,6 @@ pub struct Session {
     pub(crate) connect_time: DateTime<Utc>,
     pub(crate) hold_timer: HoldTimer,
     pub(crate) counts: MessageCounts,
-    pub(crate) routes: SessionRoutes,
     pub(crate) capabilities: Capabilities,
 }
 
@@ -43,7 +40,6 @@ impl Session {
             .into_iter()
             .chain(config.families.iter().map(|f| f.to_open_param()))
             .collect();
-        let session_rib = SessionRoutes::new(Families::new(vec![]));
         Session {
             addr: protocol
                 .get_ref()
@@ -61,7 +57,6 @@ impl Session {
             connect_time: Utc::now(),
             hold_timer: HoldTimer::new(hold_timer),
             counts: MessageCounts::new(),
-            routes: session_rib,
             capabilities: Capabilities::from_parameters(vec![OpenParameter::Capabilities(
                 capabilities,
             )]),
@@ -112,31 +107,6 @@ impl Session {
         }
         trace!("Hold time on {}: {}", self.addr, self.hold_timer);
 
-        if self.state == SessionState::Established {
-            let mut pending_routes: Vec<_> = self
-                .routes
-                .pending()
-                .into_iter()
-                .filter(|r| {
-                    let source = match r.source {
-                        EntrySource::Api => AdvertiseSource::Api,
-                        EntrySource::Config => AdvertiseSource::Config,
-                        EntrySource::Peer(_) => AdvertiseSource::Peer,
-                    };
-                    self.config.advertise_sources.contains(&source)
-                })
-                .collect();
-            if !pending_routes.is_empty() {
-                for entry in pending_routes.drain(..) {
-                    self.send_message(Message::Update(self.create_update(&entry.update)))
-                        .await?;
-                    // TODO: Store actual advertised routes
-                    //       so we can report outgoing updates as advertised
-                    self.routes.mark_advertised(&entry);
-                }
-            }
-        }
-
         tokio::select! {
             message = self.protocol.next() => {
                 match message {
@@ -159,6 +129,9 @@ impl Session {
                             }
                             MessageResponse::Update(update) => {
                                 return Ok(Some(SessionUpdate::Learned((self.addr, update))));
+                            }
+                            MessageResponse::Refresh(refresh) => {
+                                return Ok(Some(SessionUpdate::RouteRefresh(refresh)));
                             }
                             _ => (),
                         }
@@ -186,21 +159,20 @@ impl Session {
     }
 
     pub fn process_message(&mut self, message: Message) -> Result<MessageResponse, SessionError> {
-        let response = match message {
+        match message {
             Message::Open(open) => {
-                let (capabilities, hold_timer) = self.open_received(open)?;
-                self.routes.families = Families::from(&capabilities.MP_BGP_SUPPORT);
+                let (capabilities, hold_timer) = self.receive_open(open)?;
                 self.capabilities = capabilities;
                 self.hold_timer = HoldTimer::new(hold_timer);
                 match &self.state {
                     // Remote initiated, reply with OPEN
                     SessionState::Connect => {
                         self.update_state(SessionState::OpenConfirm);
-                        MessageResponse::Reply(Message::Open(self.create_open()))
+                        Ok(MessageResponse::Reply(Message::Open(self.create_open())))
                     }
                     SessionState::OpenSent => {
                         self.update_state(SessionState::OpenConfirm);
-                        MessageResponse::Reply(Message::KeepAlive)
+                        Ok(MessageResponse::Reply(Message::KeepAlive))
                     }
                     _ => {
                         return Err(SessionError::FiniteStateMachine(fsm_err_for_state(
@@ -212,21 +184,17 @@ impl Session {
             Message::KeepAlive => match self.state {
                 SessionState::OpenConfirm => {
                     self.update_state(SessionState::Established);
-                    MessageResponse::Reply(Message::KeepAlive)
+                    Ok(MessageResponse::Reply(Message::KeepAlive))
                 }
-                _ => MessageResponse::Empty,
+                _ => Ok(MessageResponse::Empty),
             },
-            Message::Update(update) => MessageResponse::Update(update),
+            Message::Update(update) => Ok(MessageResponse::Update(update)),
             Message::Notification(notification) => {
                 warn!("{} NOTIFICATION: {}", self.addr, notification.to_string());
-                MessageResponse::Empty
+                Ok(MessageResponse::Empty)
             }
-            Message::RouteRefresh(_rr_family) => {
-                // TODO: Mark all advertised routes as pending
-                MessageResponse::Empty
-            }
-        };
-        Ok(response)
+            Message::RouteRefresh(refresh) => Ok(MessageResponse::Refresh(refresh)),
+        }
     }
 
     // Send a message, and flush the send buffer afterwards
@@ -248,7 +216,7 @@ impl Session {
         self.send_message(Message::Notification(notif)).await
     }
 
-    pub fn open_received(
+    pub fn receive_open(
         &mut self,
         received_open: Open,
     ) -> Result<(Capabilities, u16), SessionError> {
@@ -301,102 +269,6 @@ impl Session {
             parameters: vec![OpenParameter::Capabilities(capabilities)],
         }
     }
-
-    pub fn create_update(&self, update: &ExportedUpdate) -> Update {
-        let mut attributes: Vec<PathAttribute> = Vec::with_capacity(4);
-        // Well-known, Mandatory Attributes
-        attributes.push(PathAttribute::ORIGIN(update.attributes.origin.clone()));
-        if let ((AFI::IPV4, SAFI::Unicast), Some(next_hop)) =
-            ((&update.family).into(), update.attributes.next_hop)
-        {
-            attributes.push(PathAttribute::NEXT_HOP(next_hop));
-        }
-        attributes.push(PathAttribute::LOCAL_PREF(
-            update.attributes.local_pref.unwrap_or(100),
-        ));
-
-        let mut as_path = update.attributes.as_path.clone();
-        if self.config.is_ebgp() {
-            if as_path.segments.is_empty() {
-                as_path
-                    .segments
-                    .push(Segment::AS_SEQUENCE(vec![self.config.local_as]));
-            } else {
-                // TODO: Support multiple segments?
-                let segment = match &as_path.segments[0] {
-                    Segment::AS_SEQUENCE(seq) => {
-                        let mut seg = seq.clone();
-                        seg.insert(0, self.config.local_as);
-                        Segment::AS_SEQUENCE(seg)
-                    }
-                    Segment::AS_SET(set) => {
-                        let mut seg = set.clone();
-                        seg.insert(0, self.config.local_as);
-                        Segment::AS_SET(seg)
-                    }
-                };
-                as_path = ASPath {
-                    segments: vec![segment],
-                };
-            }
-        }
-        attributes.push(PathAttribute::AS_PATH(as_path));
-
-        // Optional Attributes
-        if let Some(med) = update.attributes.multi_exit_disc {
-            attributes.push(PathAttribute::MULTI_EXIT_DISC(med));
-        }
-
-        let standard_communities = update.attributes.communities.standard();
-        if !standard_communities.is_empty() {
-            attributes.push(PathAttribute::COMMUNITY(standard_communities));
-        }
-        let extd_communities = update.attributes.communities.extended();
-        if !extd_communities.is_empty() {
-            attributes.push(PathAttribute::EXTENDED_COMMUNITIES(extd_communities));
-        }
-        let mut to_send = Update {
-            withdrawn_routes: Vec::new(),
-            attributes,
-            announced_routes: Vec::with_capacity(1),
-        };
-        match &update.nlri {
-            NLRIEncoding::IP(prefix) => match &prefix.protocol {
-                AFI::IPV4 => to_send
-                    .announced_routes
-                    .push(NLRIEncoding::IP(prefix.clone())),
-                AFI::IPV6 => {
-                    let next_hop = match update.attributes.next_hop {
-                        Some(IpAddr::V6(nh)) => nh.octets().to_vec(),
-                        _ => unreachable!(),
-                    };
-                    let mp_nlri = MPReachNLRI {
-                        afi: AFI::IPV6,
-                        safi: update.family.safi,
-                        next_hop,
-                        announced_routes: vec![NLRIEncoding::IP(prefix.clone())],
-                    };
-                    to_send
-                        .attributes
-                        .push(PathAttribute::MP_REACH_NLRI(mp_nlri));
-                }
-                _ => unimplemented!(),
-            },
-            NLRIEncoding::FLOWSPEC(flowspec) => {
-                let mp_nlri = MPReachNLRI {
-                    afi: update.family.afi,
-                    safi: SAFI::Flowspec,
-                    next_hop: vec![],
-                    announced_routes: vec![NLRIEncoding::FLOWSPEC(flowspec.to_vec())],
-                };
-                to_send
-                    .attributes
-                    .push(PathAttribute::MP_REACH_NLRI(mp_nlri));
-            }
-            _ => unimplemented!(),
-        }
-        to_send
-    }
 }
 
 impl fmt::Display for Session {
@@ -416,6 +288,7 @@ pub enum MessageResponse {
     Open((Open, Vec<OpenCapability>, u16)),
     Reply(Message),
     Update(Update),
+    Refresh(RouteRefresh),
     Empty,
 }
 

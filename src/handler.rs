@@ -51,14 +51,7 @@ impl Server {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        while let Ok(update) = self
-            .inner
-            .sessions
-            .write()
-            .await
-            .get_update(self.inner.rib.clone())
-            .await
-        {
+        while let Ok(update) = self.inner.sessions.write().await.get_update().await {
             trace!("Rib has {} entries", self.inner.rib.read().await.len());
             match update {
                 Some(SessionUpdate::Learned((router_id, update))) => {

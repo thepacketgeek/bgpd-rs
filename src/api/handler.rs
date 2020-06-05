@@ -109,27 +109,28 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                 }
                 Api::ShowRoutesAdvertised { respond, to_peer } => {
                     let mut output: Vec<LearnedRoute> = vec![];
-                    let sessions = state.sessions.read().await;
-                    let active_sessions = sessions.sessions.read().await;
-                    let routes: Vec<LearnedRoute> = active_sessions
-                        .values()
-                        .filter(|s| match to_peer {
-                            Some(prefix) => prefix.contains(s.addr),
-                            _ => true,
-                        })
-                        .map(|s| {
-                            s.routes
-                                .advertised()
-                                .into_iter()
-                                .map(|entry| {
-                                    let mut entry = entry_to_route(entry);
-                                    entry.source = EntrySource::Peer(s.addr).to_string();
-                                    entry
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .flatten()
-                        .collect();
+                    // let sessions = state.sessions.read().await;
+                    // let active_sessions = sessions.sessions.read().await;
+                    // let routes: Vec<LearnedRoute> = active_sessions
+                    //     .values()
+                    //     .filter(|s| match to_peer {
+                    //         Some(prefix) => prefix.contains(s.addr),
+                    //         _ => true,
+                    //     })
+                    //     .map(|s| {
+                    //         s.routes
+                    //             .advertised()
+                    //             .into_iter()
+                    //             .map(|entry| {
+                    //                 let mut entry = entry_to_route(entry);
+                    //                 entry.source = EntrySource::Peer(s.addr).to_string();
+                    //                 entry
+                    //             })
+                    //             .collect::<Vec<_>>()
+                    //     })
+                    //     .flatten()
+                    //     .collect();
+                    let routes: Vec<_> = vec![];
                     output.extend(routes);
                     respond.ok(output).await;
                 }

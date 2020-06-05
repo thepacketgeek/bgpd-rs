@@ -17,7 +17,7 @@ use message_counts::MessageCounts;
 use poller::{Poller, PollerTx};
 pub use session::Session;
 
-use bgp_rs::Update;
+use bgp_rs::{RouteRefresh, Update};
 
 #[derive(Debug)]
 pub enum SessionUpdate {
@@ -25,6 +25,8 @@ pub enum SessionUpdate {
     Learned((IpAddr, Update)),
     // Sessions are ended, clear RIB for these peers
     Ended(Vec<IpAddr>),
+    // Peer requested a route refresh
+    RouteRefresh(RouteRefresh),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
