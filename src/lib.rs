@@ -4,19 +4,11 @@
 //!
 //! BGPd can be started via the CLI:
 //! ```sh
-//! $ bgpd-rs path/to/config.toml
+//! $ bgpd run path/to/config.toml
 //! ```
 //! The config TOML file is where you specify global BGP attributes and configure
 //! peer details. Learn more about the options in the [`config`](./config/index.html) module.
 //!
-//! You change specify TCP port (default=179) or address (default=localhost):
-//! ```sh
-//! $ bgpd-rs path/to/config.toml --port 1179 --address 2601:1179::1
-//! ```
-//!
-//! The JSON RPC API server defaults to localhost:8080, but can also be specified:
-//! - `--api-addr 2601:1179::1`
-//! - `--api-port 80`
 //!
 //! View more detailed logging by setting log verbosity (additive)
 //! - `-v` DEBUG
@@ -47,6 +39,8 @@ pub mod cli;
 /// ```toml
 /// router_id = "1.1.1.1"        # Default Router ID for the service
 /// default_as = 65000           # Used as the local-as if `local_as` is not defined for a peer
+/// bgp_socket = "0.0.0.0:1179"  # Listen on all interfaces (IPv4)
+/// api_socket = "[::]:8080"     # Listen on all interfaces (IPv6)
 ///
 /// [[peers]]
 /// remote_ip = "127.0.0.2"      # This can also be an IPv6 address, see next peer

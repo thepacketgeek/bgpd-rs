@@ -31,10 +31,12 @@ Details of config values:
 ```toml
 router_id = "1.1.1.1"       # Default Router ID for the service
 default_as = 65000          # Used as the local-as if `local_as` is not defined for a peer
+bgp_socket = "0.0.0.0:1179" # Listen on all interfaces (IPv4)
+api_socket = "[::]:8080"    # Listen on all interfaces (IPv6)
 
 [[peers]]
 remote_ip = "127.0.0.2"     # This can also be an IPv6 address, see next peer
-# remote_ip = "10.0.0.0/24"  # Network+Mask will accept inbound connections from any source in the subnet
+# remote_ip = "10.0.0.0/24" # Network+Mask will accept inbound connections from any source in the subnet
 remote_as = 65000
 passive = true              # If passive, bgpd won't attempt outbound connections
 router_id = "127.0.0.1"     # Can override local Router ID for this peer
@@ -176,21 +178,14 @@ $ env exabgp.tcp.port=1179 exabgp.tcp.bind="127.0.0.2" exabgp ./conf_127.0.0.2.i
 
 And then running `bgpd` as follows:
 
-Using IPv6
 ```sh
-$ cargo run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
-```
-
-or IPv4 (defaults to 127.0.0.1)
-```sh
-$ cargo run -- -d -p 1179 ./examples/config.toml -vv
+$ cargo run -- run ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
 ```sh
-$ cargo build --release
-$ sudo ./targets/release/bgpd ./examples/config.toml -vv
+$ sudo bgpd run ./examples/config.toml -vv
 ```
 
 # Thanks to

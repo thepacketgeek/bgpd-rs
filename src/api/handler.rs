@@ -51,7 +51,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                         })
                         .collect::<Vec<PeerSummary>>();
                     output.extend(idle_summaries);
-                    respond.ok(output).await;
+                    respond.ok(output);
                 }
                 Api::ShowPeerDetail { respond } => {
                     let mut output: Vec<PeerDetail> = vec![];
@@ -82,7 +82,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                         })
                         .collect();
                     output.extend(idle_details);
-                    respond.ok(output).await;
+                    respond.ok(output);
                 }
                 Api::ShowRoutesLearned { respond, from_peer } => {
                     let mut output: Vec<LearnedRoute> = vec![];
@@ -105,7 +105,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     };
                     let routes: Vec<_> = entries.into_iter().map(entry_to_route).collect();
                     output.extend(routes);
-                    respond.ok(output).await;
+                    respond.ok(output);
                 }
                 Api::ShowRoutesAdvertised { respond, to_peer } => {
                     let mut output: Vec<LearnedRoute> = vec![];
@@ -132,7 +132,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                     //     .collect();
                     let routes: Vec<_> = vec![];
                     output.extend(routes);
-                    respond.ok(output).await;
+                    respond.ok(output);
                 }
                 Api::AdvertiseRoute { respond, route } => {
                     let response = match parse_route_spec(&route) {
@@ -144,7 +144,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                         }
                         Err(err) => Err(err.to_string()),
                     };
-                    respond.ok(response).await;
+                    respond.ok(response);
                 }
                 Api::AdvertiseFlow { respond, flow } => {
                     let response = match parse_flow_spec(&flow) {
@@ -156,7 +156,7 @@ pub async fn serve(socket: SocketAddr, state: Arc<State>) {
                         }
                         Err(err) => Err(err.to_string()),
                     };
-                    respond.ok(response).await;
+                    respond.ok(response);
                 }
             }
         }

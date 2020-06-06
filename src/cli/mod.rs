@@ -148,7 +148,7 @@
 //!
 //! IPv6 Unicast
 //! ```sh
-//! $ bgpd advertise route 10.10.10.0/24 172.16.20.90 --local-pref 500
+//! $ bgpd advertise route 10.10.10.0/24 172.16.20.90 -p 500
 //! Added route to RIB for announcement:
 //!  Received From  Prefix         Next Hop      Age       Origin      Local Pref  Metric  AS Path  Communities  Age
 //! ----------------------------------------------------------------------------------------------------------------------
@@ -239,10 +239,11 @@ pub struct Args {
 #[structopt(rename_all = "kebab-case")]
 /// CLI to query BGPd
 pub enum Command {
-    #[structopt()]
     /// Run BGPd daemon
+    #[structopt()]
     Run(RunOptions),
     /// View details about BGPd
+    #[structopt(alias = "s")]
     Show(Show),
     /// Send routes to be advertised
     Advertise(Advertise),
@@ -261,9 +262,9 @@ pub struct RunOptions {
 pub enum Show {
     /// View configured neighbors and session details
     /// (* prefix means peer is disabled)
-    #[structopt(visible_alias = "peers")]
+    #[structopt(alias = "n", visible_alias = "peers")]
     Neighbors(NeighborOptions),
-    #[structopt()]
+    #[structopt(alias = "r")]
     Routes(Routes),
 }
 
