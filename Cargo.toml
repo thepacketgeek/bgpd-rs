@@ -16,7 +16,7 @@ name = "bgpd"
 path = "src/main.rs"
 
 [dependencies]
-bgp-rs = { git = "https://github.com/thepacketgeek/bgp-rs" }
+bgp-rs = { git = "https://github.com/DevQps/bgp-rs", features = ["flowspec"] }
 bgpd-rpc-lib = { path = "rpc_lib" }
 bytes = "^0.5.3"
 byteorder = "1.3.1"
