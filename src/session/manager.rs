@@ -12,14 +12,14 @@ use tokio::{
 };
 
 use super::codec::{MessageCodec, MessageProtocol};
-use super::{Poller, PollerTx, Session, SessionError, SessionUpdate};
+use super::{Poller, PollerTx, Session, SessionError, SessionState, SessionUpdate};
 use crate::config::{PeerConfig, ServerConfig};
 
 /// Struct to contain active [`Session`s](session/struct.Session.html) and managing
 /// of new incoming/outbound sessions (via `Poller`)
 pub struct SessionManager {
     pub(crate) idle_peers: Poller,
-    // Active Sessions                  remote_ip: session
+    // Active Sessions                   remote_ip: session
     pub(crate) sessions: Arc<RwLock<HashMap<IpAddr, Session>>>,
     config: Arc<ServerConfig>,
     poller_tx: PollerTx,
@@ -63,10 +63,13 @@ impl SessionManager {
         //         .collect();
         //     select_all(futs).fuse()
         // };
+        // The way this is currently working can cause new session starvation when there
+        // are many messages incoming/outgoing for current sessions
         {
-            // Store sessions that have ended (remote_ip, router_id)
-            let mut ended_sessions: Vec<IpAddr> = Vec::new();
             let mut sessions = self.sessions.write().await;
+            // Before polling sessions, remove any ended sessions
+            sessions.retain(|_, s| s.state != SessionState::Ended);
+
             for (remote_ip, session) in sessions.iter_mut() {
                 // let routes = rib.read().await.get_routes_for_peer(session.addr);
                 // session.routes.insert_routes(routes);
@@ -96,16 +99,10 @@ impl SessionManager {
                         }
                         warn!("{}", err);
                         self.poller_tx.send(session.config.clone()).unwrap();
-                        ended_sessions.push(*remote_ip);
+                        session.update_state(SessionState::Ended);
+                        return Ok(Some(SessionUpdate::Ended(*remote_ip)));
                     }
                 }
-            }
-            // Remove ended sessions and alert handler for RIB removal
-            if !ended_sessions.is_empty() {
-                for remote_ip in &ended_sessions {
-                    sessions.remove(&remote_ip);
-                }
-                return Ok(Some(SessionUpdate::Ended(ended_sessions)));
             }
         }
 

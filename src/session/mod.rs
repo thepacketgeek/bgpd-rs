@@ -23,8 +23,8 @@ use bgp_rs::{RouteRefresh, Update};
 pub enum SessionUpdate {
     // Update received from a peer (PeerIP, Update)
     Learned((IpAddr, Update)),
-    // Sessions are ended, clear RIB for these peers
-    Ended(Vec<IpAddr>),
+    // A session has ended, clear RIB for this peer
+    Ended(IpAddr),
     // Peer requested a route refresh
     RouteRefresh(RouteRefresh),
 }
@@ -37,6 +37,7 @@ pub enum SessionState {
     OpenSent,
     OpenConfirm,
     Established,
+    Ended,
 }
 
 impl fmt::Display for SessionState {
@@ -48,6 +49,7 @@ impl fmt::Display for SessionState {
             SessionState::OpenSent => "OpenSent",
             SessionState::OpenConfirm => "OpenConfirm",
             SessionState::Established => "Established",
+            SessionState::Ended => "Ended",
         };
         write!(f, "{}", word)
     }
@@ -63,6 +65,8 @@ pub enum SessionError {
     FiniteStateMachine(u8),
     /// Hold time expired. [interval]
     HoldTimeExpired(u16),
+    /// Couldn't decode the message. [reason]
+    CodecError(String),
     /// Something happened in transport. [reason]
     TransportError(String),
     /// Some other issue happened. [reason]
@@ -80,6 +84,7 @@ impl fmt::Display for SessionError {
             }
             HoldTimeExpired(h) => write!(f, "Hold time expired after {} seconds", h)?,
             FiniteStateMachine(minor) => write!(f, "Finite State Machine err [{}]", minor)?,
+            CodecError(r) => write!(f, "Codec error [{}]", r)?,
             TransportError(r) => write!(f, "Transport error [{}]", r)?,
             Other(r) => write!(f, "{}", r)?,
         }

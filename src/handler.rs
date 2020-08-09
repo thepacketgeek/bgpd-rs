@@ -62,11 +62,8 @@ impl Server {
                         .await
                         .update_from_peer(router_id, update)?;
                 }
-                Some(SessionUpdate::Ended(peers)) => {
-                    let mut rib = self.inner.rib.write().await;
-                    for peer in peers {
-                        rib.remove_from_peer(peer);
-                    }
+                Some(SessionUpdate::Ended(peer)) => {
+                    self.inner.rib.write().await.remove_from_peer(peer);
                 }
                 _ => (),
             }

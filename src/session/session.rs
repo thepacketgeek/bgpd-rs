@@ -117,6 +117,7 @@ impl Session {
                             self.addr
                         )))
                     }
+                    // Message received, update session and reply if required
                     Some(Ok(message)) => {
                         let message_type = get_message_type(&message);
                         trace!("[{}] Incoming: {}", self.addr, message_type);
@@ -139,7 +140,7 @@ impl Session {
                     }
                     // Error decoding message
                     Some(Err(err)) => {
-                        Err(SessionError::Other(format!(
+                        Err(SessionError::CodecError(format!(
                             "Session ended with {}: {}",
                             self.addr, err
                         )))
