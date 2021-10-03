@@ -4,15 +4,20 @@ use ipnetwork::IpNetwork;
 
 use serde::{self, Deserialize, Serialize};
 
-jsonrpsee::rpc_api! {
-    pub Api {
-        fn show_peers() -> Vec<PeerSummary>;
-        fn show_peer_detail() -> Vec<PeerDetail>;
-        fn show_routes_learned(from_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
-        fn show_routes_advertised(to_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
-        fn advertise_route(route: RouteSpec) -> Result<LearnedRoute, String>;
-        fn advertise_flow(flow: FlowSpec) -> Result<LearnedRoute, String>;
-    }
+#[jsonrpsee::proc_macros::rpc(client, server)]
+pub trait Api {
+    #[method(name = "show_peers")]
+    async fn show_peers(&self) -> Vec<PeerSummary>;
+    #[method(name = "show_peer_detail")]
+    async fn show_peer_detail(&self) -> Vec<PeerDetail>;
+    #[method(name = "show_routes_learned")]
+    async fn show_routes_learned(&self, from_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
+    #[method(name = "show_routes_advertised")]
+    async fn show_routes_advertised(&self, to_peer: Option<IpNetwork>) -> Vec<LearnedRoute>;
+    #[method(name = "advertise_route")]
+    async fn advertise_route(&self, route: RouteSpec) -> Result<LearnedRoute, String>;
+    #[method(name = "advertise_flow")]
+    async fn advertise_flow(&self, flow: FlowSpec) -> Result<LearnedRoute, String>;
 }
 
 #[derive(Debug, Deserialize, Serialize)]

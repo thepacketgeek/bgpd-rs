@@ -10,7 +10,6 @@ use structopt::StructOpt;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
-use bgpd::api::serve;
 use bgpd::config;
 use bgpd::handler::Server;
 
@@ -57,22 +56,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     debug!("Found {} peers in {}", config.peers.len(), args.config_path);
     trace!("Using config: {:#?}", &config);
     let (config_tx, config_rx) = watch::channel(config.clone());
-    config_tx.broadcast(config.clone())?;
+    config_tx.send(config.clone())?;
 
     let socket = SocketAddr::from((args.address, args.port));
     let bgp_listener = TcpListener::bind(&socket).await?;
     let mut bgp_server = Server::new(config, bgp_listener, config_rx)?;
     // Setup JSON RPC Server
-    let state = bgp_server.clone_state();
     let api_socket: SocketAddr = (args.api_addr, args.api_port).into();
-    serve(api_socket, state).await;
+    bgp_server.serve_rpc_api(api_socket);
 
     let signals = Signals::new(&[SIGHUP])?;
     std::thread::spawn(move || {
         for sig in signals.forever() {
             info!("Received {}, reloading config", sig);
             config::from_file(&args.config_path)
-                .map(|new_config| config_tx.broadcast(Arc::new(new_config)))
+                .map(|new_config| config_tx.send(Arc::new(new_config)))
                 .map_err(|err| error!("Error reloading config: {}", err))
                 .ok();
         }

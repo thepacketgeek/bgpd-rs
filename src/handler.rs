@@ -10,8 +10,9 @@ use crate::rib::RIB;
 use crate::session::{SessionManager, SessionUpdate};
 use crate::utils::{parse_flow_spec, parse_route_spec};
 
+#[derive(Clone)]
 pub struct Server {
-    inner: Arc<State>,
+    pub(crate) inner: Arc<State>,
 }
 
 pub struct State {
@@ -44,10 +45,6 @@ impl Server {
                 rib: Arc::new(RwLock::new(rib)),
             }),
         })
-    }
-
-    pub fn clone_state(&self) -> Arc<State> {
-        self.inner.clone()
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {

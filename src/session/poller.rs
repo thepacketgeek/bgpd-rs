@@ -9,10 +9,11 @@ use ipnetwork::IpNetwork;
 use log::{debug, trace, warn};
 use net2::TcpBuilder;
 use tokio::sync::mpsc;
-use tokio::time::{timeout, DelayQueue, Duration};
+use tokio::time::{timeout, Duration};
+use tokio_util::time::DelayQueue;
 use tokio::{
     self,
-    net::{TcpListener, TcpStream},
+    net::{TcpListener, TcpSocket, TcpStream},
 };
 
 use crate::config::PeerConfig;
@@ -47,8 +48,8 @@ impl IdlePeer {
             };
             builder.reuse_address(true)?;
             builder.bind(source_addr)?;
-            let connect = TcpStream::connect_std(builder.to_tcp_stream()?, &peer_addr);
-
+            let s = TcpSocket::from_std_stream(builder.to_tcp_stream()?);
+            let connect = s.connect(peer_addr);
             return match timeout(Duration::from_millis(TCP_INIT_TIMEOUT_MS.into()), connect).await?
             {
                 Ok(stream) => Ok((stream, self.0.clone())),
