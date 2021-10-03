@@ -9,7 +9,8 @@ name = "bgpd_rpc_lib"
 path = "src/lib.rs"
 
 [dependencies]
-jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", default-features = false, features = ["http"] }
+async-trait = "0.1"
+jsonrpsee = { version = "0.3.1", features = [ "macros", "server" ] }
 ipnetwork = "^0.16"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

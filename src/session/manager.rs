@@ -132,8 +132,9 @@ impl SessionManager {
                 }
                 Ok(None)
             },
-            Some(new_config) = self.config_watch.recv() => {
-                self.config = new_config.clone();
+            Ok(()) = self.config_watch.changed() => {
+                let new_config = self.config_watch.borrow();
+                self.config = self.config_watch.borrow().clone();
                 let configs_by_network: HashMap<IpNetwork, Arc<PeerConfig>> = new_config
                     .peers
                     .iter()

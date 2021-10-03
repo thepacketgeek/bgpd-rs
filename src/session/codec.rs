@@ -1,9 +1,9 @@
 use std::io::{Error, Read};
 use std::result::Result;
 
-use bgp_rs::{Message, Reader};
+use bgp_rs::{Message, Reader, Capabilities};
 use byteorder::{NetworkEndian, ReadBytesExt};
-use bytes::{buf::ext::BufMutExt, Buf, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Decoder, Encoder, Framed};
 use twoway::find_bytes;
@@ -18,11 +18,11 @@ impl MessageCodec {
         Self
     }
 
-    fn get_reader<T>(&self, stream: T) -> Reader<T>
+    fn get_reader<T>(&self, stream: T) -> Reader<T, Capabilities>
     where
         T: Read,
     {
-        Reader::<T>::new(stream)
+        Reader::<T, Capabilities>::new(stream)
     }
 }
 
@@ -43,8 +43,7 @@ impl Decoder for MessageCodec {
     }
 }
 
-impl Encoder for MessageCodec {
-    type Item = Message;
+impl Encoder<Message> for MessageCodec {
     type Error = Error;
 
     fn encode(&mut self, message: Message, buf: &mut BytesMut) -> Result<(), Error> {
