@@ -1,29 +1,28 @@
 #![recursion_limit = "512"] // Needed for the select! macros
 
-
 //! BGPd-rs is a BGP peering utility
-//! 
+//!
 //! BGPd can be started via the CLI:
 //! ```sh
 //! $ bgpd-rs path/to/config.toml
 //! ```
 //! The config TOML file is where you specify global BGP attributes and configure
 //! peer details. Learn more about the options in the [`config`](./config/index.html) module.
-//! 
+//!
 //! You change specify TCP port (default=179) or address (default=localhost):
 //! ```sh
 //! $ bgpd-rs path/to/config.toml --port 1179 --address 2601:1179::1
 //! ```
-//! 
+//!
 //! The JSON RPC API server defaults to localhost:8080, but can also be specified:
 //! - `--api-addr 2601:1179::1`
 //! - `--api-port 80`
-//! 
+//!
 //! View more detailed logging by setting log verbosity (additive)
 //! - `-v` DEBUG
 //! - `-vv` TRACE
 //! - `-vvv` TRACE (including tokio logs)
-//! 
+//!
 //! To update the daemon with an updated config while it's running, send a SIGHUP:
 //! ```sh
 //! pkill -1 bgpd$
@@ -38,6 +37,8 @@
 
 /// JSON RPC API
 pub mod api;
+/// BGPd CLI for interacting with a running BGPd process
+pub mod cli;
 /// TOML Config Manager
 /// Peers and their config are defined in `TOML` format.
 ///
@@ -58,7 +59,7 @@ pub mod api;
 ///   "ipv4 unicast",
 ///   "ipv6 unicast",
 /// ]
-/// 
+///
 /// [[peers.static_routes]]      # Add static routes (advertised at session start)
 ///   prefix = "9.9.9.0/24"
 ///   next_hop = "127.0.0.1"
@@ -75,8 +76,8 @@ pub mod api;
 /// ]
 /// as_path = ["65000", "500"]
 /// communities = ["101", "202", "65000:99"]
-/// 
-/// 
+///
+///
 /// [[peers]]
 /// remote_ip = "::2"
 /// enabled = false              # Peer is essentially de-configured

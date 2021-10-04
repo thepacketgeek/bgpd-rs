@@ -1,19 +1,27 @@
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use bgp_rs::{AFI, SAFI};
-use bgpd_rpc_lib::{FlowSpec, RouteSpec};
 use ipnetwork::IpNetwork;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use toml;
 
+use crate::api::rpc::{FlowSpec, RouteSpec};
 use crate::rib::Family;
 
 struct Defaults {}
 
 impl Defaults {
+    fn api_socket() -> SocketAddr {
+        "[::]:8080".parse().expect("Can parse default socket")
+    }
+
+    fn bgp_socket() -> SocketAddr {
+        "[::]:179".parse().expect("Can parse default socket")
+    }
+
     fn enabled() -> bool {
         true
     }
@@ -21,6 +29,7 @@ impl Defaults {
     fn passive() -> bool {
         false
     }
+
     fn poll_interval() -> u16 {
         30
     }
@@ -41,6 +50,7 @@ impl Defaults {
             Family::new(AFI::IPV6, SAFI::Flowspec),
         ]
     }
+
     fn advertise_sources() -> Vec<AdvertiseSource> {
         vec![AdvertiseSource::Api, AdvertiseSource::Config]
     }
@@ -91,11 +101,17 @@ pub(super) struct PeerConfigSpec {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ServerConfigSpec {
-    // Global Router-ID (can be overriden per-peer in peer config)
+    /// Global Router-ID (can be overriden per-peer in peer config)
     pub(super) router_id: IpAddr,
-    // Global ASN (can be overriden per-peer in peer config)
+    /// Global ASN (can be overriden per-peer in peer config)
     pub(super) default_as: u32,
-    // Inverval to poll idle peers (outbound connection)
+    /// BGP TCP ;istening socket
+    #[serde(default = "Defaults::bgp_socket")]
+    pub(super) bgp_socket: SocketAddr,
+    /// API HTTP listening socket
+    #[serde(default = "Defaults::api_socket")]
+    pub(super) api_socket: SocketAddr,
+    /// Intverval to poll idle peers (outbound connection)
     #[serde(default = "Defaults::poll_interval")]
     pub(super) poll_interval: u16,
     #[serde(default = "Vec::new")]

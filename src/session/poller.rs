@@ -10,11 +10,11 @@ use log::{debug, trace, warn};
 use net2::TcpBuilder;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
-use tokio_util::time::DelayQueue;
 use tokio::{
     self,
     net::{TcpListener, TcpSocket, TcpStream},
 };
+use tokio_util::time::DelayQueue;
 
 use crate::config::PeerConfig;
 use crate::utils::get_host_address;
@@ -196,7 +196,7 @@ fn get_config_for_peer(
     peer: IpAddr,
 ) -> Option<Arc<PeerConfig>> {
     if let Some(network) = idle_peers.keys().find(|n| n.contains(peer)) {
-        idle_peers.get(&network).map(|c| c.get_config())
+        idle_peers.get(network).map(|c| c.get_config())
     } else {
         None
     }

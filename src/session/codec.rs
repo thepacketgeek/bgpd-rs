@@ -1,7 +1,7 @@
 use std::io::{Error, Read};
 use std::result::Result;
 
-use bgp_rs::{Message, Reader, Capabilities};
+use bgp_rs::{Capabilities, Message, Reader};
 use byteorder::{NetworkEndian, ReadBytesExt};
 use bytes::{Buf, BufMut, BytesMut};
 use tokio::net::TcpStream;
@@ -32,7 +32,7 @@ impl Decoder for MessageCodec {
 
     // Look for a BGP message (preamble + length), using bgp-rs to decode each message
     fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Error> {
-        if let Ok(range) = find_msg_range(&buf) {
+        if let Ok(range) = find_msg_range(buf) {
             let mut reader = self.get_reader(&buf[range.start..range.stop]);
             let (_header, message) = reader.read()?;
             buf.advance(range.stop);
@@ -59,7 +59,7 @@ struct MsgRange {
 
 /// Given a stream of bytes, find the start and end of a BGP message
 fn find_msg_range(data: &[u8]) -> Result<MsgRange, String> {
-    if let Some(start) = find_bytes(&data, &[255; 16]) {
+    if let Some(start) = find_bytes(data, &[255; 16]) {
         let buf = &mut (*data).split_at(start).1;
         let mut _preamble: [u8; 16] = [0; 16];
         let _ = buf.read_exact(&mut _preamble);

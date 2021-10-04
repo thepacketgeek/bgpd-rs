@@ -9,9 +9,9 @@ use bgp_rs::{
     flowspec::{FlowspecFilter, NumericOperator},
     ASPath, NLRIEncoding, Origin, PathAttribute, Prefix, Segment, AFI, SAFI,
 };
-use bgpd_rpc_lib::{FlowSpec, RouteSpec, SpecAttributes};
 use ipnetwork::{IpNetwork, NetworkSize};
 
+use crate::api::rpc::{FlowSpec, RouteSpec, SpecAttributes};
 use crate::rib::{Community, CommunityList, Family};
 
 #[derive(Debug)]
@@ -153,7 +153,7 @@ pub fn parse_flow_spec(
     let filters: Vec<_> = spec
         .matches
         .iter()
-        .map(|m| parse_flowspec_match(&m))
+        .map(|m| parse_flowspec_match(m))
         .collect::<Result<Vec<_>, _>>()?;
     Ok((family, attributes, NLRIEncoding::FLOWSPEC(filters)))
 }
@@ -332,7 +332,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::IpProtocol(values))
         }
@@ -340,7 +340,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::Port(values))
         }
@@ -348,7 +348,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::DestinationPort(values))
         }
@@ -356,7 +356,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::SourcePort(values))
         }
@@ -364,7 +364,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::IcmpType(values))
         }
@@ -372,7 +372,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::IcmpCode(values))
         }
@@ -380,7 +380,7 @@ fn parse_flowspec_match(rule: &str) -> Result<FlowspecFilter, ParseError> {
             let values: Vec<_> = words[1]
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, w)| parse_num_operator(&w, i))
+                .map(|(i, w)| parse_num_operator(w, i))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(FlowspecFilter::PacketLength(values))
         }

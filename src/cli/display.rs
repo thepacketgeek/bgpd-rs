@@ -2,10 +2,10 @@ use std::convert::From;
 use std::error::Error;
 use std::fmt::Display;
 
-use bgpd_rpc_lib::{LearnedRoute, PeerSummary};
 use prettytable::{cell, row, Row};
 
-use crate::table::ToRow;
+use super::table::ToRow;
+use crate::api::rpc::{LearnedRoute, PeerSummary};
 
 pub const EMPTY_VALUE: &str = "";
 

@@ -1,15 +1,14 @@
 use std::net::SocketAddr;
 
-use bgpd_rpc_lib::{ApiServer, LearnedRoute, PeerDetail, PeerSummary, FlowSpec, RouteSpec};
 use ipnetwork::IpNetwork;
-use log::info;
 use jsonrpsee::http_server::HttpServerBuilder;
-
-use crate::handler::Server;
-use crate::rib::EntrySource;
+use log::info;
 
 use super::peers::{peer_to_detail, peer_to_summary};
 use super::routes::entry_to_route;
+use super::rpc::{ApiServer, FlowSpec, LearnedRoute, PeerDetail, PeerSummary, RouteSpec};
+use crate::handler::Server;
+use crate::rib::EntrySource;
 use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 
 #[async_trait::async_trait]
@@ -77,7 +76,7 @@ impl ApiServer for Server {
         output.extend(idle_details);
         output
     }
-        
+
     async fn show_routes_learned(&self, from_peer: Option<IpNetwork>) -> Vec<LearnedRoute> {
         let mut output: Vec<LearnedRoute> = vec![];
         let entries = {
@@ -159,7 +158,11 @@ impl Server {
         let server = self.clone();
         info!("Starting JSON-RPC server on {}...", socket);
         tokio::task::spawn(async move {
-            HttpServerBuilder::default().build(socket).unwrap().start(server.into_rpc()).await
+            HttpServerBuilder::default()
+                .build(socket)
+                .unwrap()
+                .start(server.into_rpc())
+                .await
         });
     }
 }

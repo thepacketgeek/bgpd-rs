@@ -85,7 +85,7 @@ impl RIB {
             .map(|(group_key, entries)| {
                 let attributes = {
                     let group = self.cache.get(*group_key).expect("Cached PAs exist");
-                    Arc::new(PathAttributes::from_group(&group))
+                    Arc::new(PathAttributes::from_group(group))
                 };
                 entries
                     .iter()
@@ -105,7 +105,7 @@ impl RIB {
             .map(|(group_key, e)| {
                 let attributes = {
                     let group = self.cache.get(*group_key).expect("Cached PAs exist");
-                    Arc::new(PathAttributes::from_group(&group))
+                    Arc::new(PathAttributes::from_group(group))
                 };
                 Arc::new((e, attributes).into())
             })
@@ -124,7 +124,7 @@ impl RIB {
             .map(|(group_key, e)| {
                 let attributes = {
                     let group = self.cache.get(*group_key).expect("Cached PAs exist");
-                    Arc::new(PathAttributes::from_group(&group))
+                    Arc::new(PathAttributes::from_group(group))
                 };
                 Arc::new((e, attributes).into())
             })
@@ -138,7 +138,7 @@ impl RIB {
                 PathAttribute::MP_UNREACH_NLRI(nlri) => nlri.withdrawn_routes.iter().collect(),
                 _ => unreachable!(),
             })
-            .unwrap_or_else(|| vec![]);
+            .unwrap_or_else(Vec::new);
         let withdraws: Vec<&NLRIEncoding> = mp_withdraws
             .into_iter()
             .chain(update.withdrawn_routes.iter())
@@ -181,7 +181,7 @@ impl RIB {
         let e = entry.last().expect("Pushed entry exists");
         let attributes = {
             let group = self.cache.get(group_key).expect("Cached PAs exist");
-            Arc::new(PathAttributes::from_group(&group))
+            Arc::new(PathAttributes::from_group(group))
         };
         Arc::new((e, attributes).into())
     }

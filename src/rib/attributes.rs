@@ -136,7 +136,7 @@ impl PathAttributes {
                     .collect::<Vec<Community>>(),
                 _ => unreachable!(),
             })
-            .unwrap_or_else(|| vec![]);
+            .unwrap_or_else(Vec::new);
 
         let ext_communities = group
             .get(Identifier::EXTENDED_COMMUNITIES)
@@ -147,7 +147,7 @@ impl PathAttributes {
                     .collect::<Vec<Community>>(),
                 _ => unreachable!(),
             })
-            .unwrap_or_else(|| vec![]);
+            .unwrap_or_else(Vec::new);
 
         let community_list = CommunityList(
             communities

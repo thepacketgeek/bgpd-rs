@@ -26,7 +26,7 @@ impl SessionRoutes {
     pub fn pending(&self) -> Vec<Arc<ExportEntry>> {
         self.routes
             .iter()
-            .filter(|(ts, _)| self.pending.contains(&ts))
+            .filter(|(ts, _)| self.pending.contains(ts))
             .filter(|(_, entry)| self.families.contains(entry.update.family))
             .map(|(_, entry)| entry.clone())
             .collect()
@@ -34,7 +34,7 @@ impl SessionRoutes {
     pub fn advertised(&self) -> Vec<Arc<ExportEntry>> {
         self.routes
             .iter()
-            .filter(|(ts, _)| self.advertised.contains(&ts))
+            .filter(|(ts, _)| self.advertised.contains(ts))
             .filter(|(_, entry)| self.families.contains(entry.update.family))
             .map(|(_, entry)| entry.clone())
             .collect()

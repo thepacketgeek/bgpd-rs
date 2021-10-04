@@ -7,7 +7,7 @@ BGP service daemon built in Rust
 
 
 ## Features
-- [x] Listen for Incoming BGP sessions 
+- [x] Listen for Incoming BGP sessions
 - Specified peers can be an IP address or Network+Mask
 - [x] Initiate outbound TCP connection to idle peers
 - Will attempt connection based on configured poll interval
@@ -17,7 +17,7 @@ BGP service daemon built in Rust
 - [x] Config reloading for Peer status (enable, passive, etc.)
   - [ ] Update static route advertisements mid-session
 - [x] CLI interface for viewing peer status, routes, etc.
-- [x] Advertise routes to peers (specified from API and/or Config) 
+- [x] Advertise routes to peers (specified from API and/or Config)
 - [x] API/CLI interface for interacting with BGPd
 - [x] Flowspec Support
 - [ ] Route Refresh
@@ -29,27 +29,29 @@ Peers and their config are defined in `TOML` format; see an example [here](examp
 
 Details of config values:
 ```toml
-router_id = "1.1.1.1"       # Default Router ID for the service
-default_as = 65000          # Used as the local-as if `local_as` is not defined for a peer
+router_id = "1.1.1.1"         # Default Router ID for the service
+default_as = 65000            # Used as the local-as if `local_as` is not defined for a peer
+bgp_socket = "127.0.0.1:1179" # BGP address & port
+api_socket = "0.0.0.0:8080"   # API address & port [Listen on all interfaces (IPv4 & IPv6)]
 
 [[peers]]
-remote_ip = "127.0.0.2"     # This can also be an IPv6 address, see next peer
-# remote_ip = "10.0.0.0/24"  # Network+Mask will accept inbound connections from any source in the subnet
+remote_ip = "127.0.0.2"       # This can also be an IPv6 address, see next peer
+# remote_ip = "10.0.0.0/24"   # Network+Mask will accept inbound connections from any source in the subnet
 remote_as = 65000
-passive = true              # If passive, bgpd won't attempt outbound connections
-router_id = "127.0.0.1"     # Can override local Router ID for this peer
-hold_timer = 90             # Set the hold timer for the peer, defaults to 180 seconds
-families = [                # Define the families this session should support
+passive = true                # If passive, bgpd won't attempt outbound connections
+router_id = "127.0.0.1"       # Can override local Router ID for this peer
+hold_timer = 90               # Set the hold timer for the peer, defaults to 180 seconds
+families = [                  # Define the families this session should support
   "ipv4 unicast",
   "ipv6 unicast",
 ]
-[[peers.static_routes]]     # Add static routes (advertised at session start)
+[[peers.static_routes]]       # Add static routes (advertised at session start)
   prefix = "9.9.9.0/24"
   next_hop = "127.0.0.1"
 [[peers.static_routes]]
   prefix = "3001:100::/64"
   next_hop = "3001:1::1"
-[[peers.static_flows]]     # Add static Flowspec rules too!
+[[peers.static_flows]]        # Add static Flowspec rules too!
 afi = 2
 action = "traffic-rate 24000"
 matches= [
@@ -63,7 +65,7 @@ communities = ["101", "202", "65000:99"]
 
 [[peers]]
 remote_ip = "::2"
-enabled = false             # Peer is essentially de-configured
+enabled = false               # Peer is essentially de-configured
 remote_as = 100
 local_as = 200
 families = [
@@ -139,7 +141,7 @@ $ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc"
 }
 ```
 
-Check out [bgpd-cli](examples/cli) for an example CLI you can use to view peer & route information via the BGPd API (and Announce routes too!)
+The `bgpd` [CLI](src/cli/mod.rs) can also be used to view peer & route information via the BGPd API (and announce routes too!)
 
 # Development
 I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
@@ -178,12 +180,12 @@ And then running `bgpd` as follows:
 
 Using IPv6
 ```sh
-$ cargo run -- -d -a "::1" -p 1179 ./examples/config.toml -vv
+$ cargo run -- --address "::1" --port 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
 ```sh
-$ cargo run -- -d -p 1179 ./examples/config.toml -vv
+$ cargo run -- --port 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:

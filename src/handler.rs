@@ -29,11 +29,11 @@ impl Server {
         let mut rib = RIB::new();
         for peer in config.peers.iter() {
             for route in peer.static_routes.iter() {
-                let (family, attributes, nlri) = parse_route_spec(&route)?;
+                let (family, attributes, nlri) = parse_route_spec(route)?;
                 rib.insert_from_config(family, attributes, nlri);
             }
             for route in peer.static_flows.iter() {
-                let (family, attributes, nlri) = parse_flow_spec(&route)?;
+                let (family, attributes, nlri) = parse_flow_spec(route)?;
                 rib.insert_from_config(family, attributes, nlri);
             }
         }

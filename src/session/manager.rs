@@ -107,7 +107,7 @@ impl SessionManager {
             // Remove ended sessions and alert handler for RIB removal
             if !ended_sessions.is_empty() {
                 for remote_ip in &ended_sessions {
-                    sessions.remove(&remote_ip);
+                    sessions.remove(remote_ip);
                 }
                 return Ok(Some(SessionUpdate::Ended(ended_sessions)));
             }
