@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::net::IpAddr;
 
-use bgpd_rpc_lib as rpc;
+use bgpd_rpc_lib::{ApiClient, RouteSpec, FlowSpec};
 use colored::*;
-use jsonrpsee::{raw::RawClient, transport::http::HttpTransportClient};
+use jsonrpsee::http_client::HttpClientBuilder;
 use ipnetwork::IpNetwork;
 use itertools::Itertools;
 use structopt::StructOpt;
@@ -139,17 +139,17 @@ struct Flow {
     communities: Option<String>,
 }
 
+#[tokio::main]
 async fn run(args: Args) -> Result<(), Box<dyn Error>> {
-    let mut client = {
+    let client = {
         let base = format!("http://{}:{}", args.host, args.port);
-        let transport_client = HttpTransportClient::new(&base);
-        RawClient::new(transport_client)
+        HttpClientBuilder::default().build(base)?
     };
     match args.cmd {
         Command::Show(show) => match show {
             Show::Neighbors(options) => {
                 if options.detail {
-                    let peers: Vec<_> = rpc::Api::show_peer_detail(&mut client).await?;
+                    let peers: Vec<_> = client.show_peer_detail().await?;
                     for peer in peers {
                         let summ = peer.summary;
                         let mut lines: Vec<String> = Vec::with_capacity(16);
@@ -196,7 +196,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         println!("{}\n", lines.join("\n  "));
                     }
                 } else {
-                    let peers: Vec<_> = rpc::Api::show_peers(&mut client)
+                    let peers: Vec<_> = client.show_peers()
                         .await?
                         .into_iter()
                         .map(PeerSummaryRow)
@@ -211,7 +211,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
             Show::Routes(routes) => match routes {
                 Routes::Learned(options) => {
                     let mut routes: Vec<_> =
-                        rpc::Api::show_routes_learned(&mut client, options.peer).await?;
+                        client.show_routes_learned(options.peer).await?;
                     routes.sort_by_key(|r| (r.afi.clone(), r.safi.clone()));
                     for (afi, routes) in &routes.into_iter().group_by(|r| r.afi.clone()) {
                         for (safi, routes) in &routes.group_by(|r| r.safi.clone()) {
@@ -227,7 +227,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                 }
                 Routes::Advertised(options) => {
                     let mut routes: Vec<_> =
-                        rpc::Api::show_routes_advertised(&mut client, options.peer).await?;
+                        client.show_routes_advertised(options.peer).await?;
                     routes.sort_by_key(|r| (r.afi.clone(), r.safi.clone()));
                     for (afi, routes) in &routes.into_iter().group_by(|r| r.afi.clone()) {
                         for (safi, routes) in &routes.group_by(|r| r.safi.clone()) {
@@ -245,7 +245,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
         },
         Command::Advertise(advertise) => match advertise {
             Advertise::Route(route) => {
-                let mut spec = rpc::RouteSpec::new(route.prefix, route.next_hop);
+                let mut spec = RouteSpec::new(route.prefix, route.next_hop);
                 if let Some(origin) = &route.origin {
                     spec.attributes.origin = Some(origin.to_string());
                 }
@@ -265,7 +265,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         .map(|comm| comm.to_string())
                         .collect();
                 }
-                match rpc::Api::advertise_route(&mut client, spec).await? {
+                match client.advertise_route(spec).await? {
                     Ok(advertised) => {
                         println!("Added route to RIB for announcement:");
                         let mut table = table::OutputTable::new();
@@ -285,7 +285,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                     }
                 };
                 let mut spec =
-                    rpc::FlowSpec::new(afi, flow.action.to_string(), flow.matches.clone());
+                    FlowSpec::new(afi, flow.action.to_string(), flow.matches.clone());
                 if let Some(origin) = &flow.origin {
                     spec.attributes.origin = Some(origin.to_string());
                 }
@@ -305,7 +305,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
                         .map(|comm| comm.to_string())
                         .collect();
                 }
-                match rpc::Api::advertise_flow(&mut client, spec).await? {
+                match client.advertise_flow(spec).await? {
                     Ok(advertised) => {
                         println!("Added flow to RIB for announcement:");
                         let mut table = table::OutputTable::new();
@@ -322,7 +322,7 @@ async fn run(args: Args) -> Result<(), Box<dyn Error>> {
 
 fn main() {
     let args = Args::from_args();
-    let result = async_std::task::block_on(async { run(args).await });
+    let result = run(args);
     if let Err(err) = result {
         eprintln!("{}", err.to_string().red());
     }
