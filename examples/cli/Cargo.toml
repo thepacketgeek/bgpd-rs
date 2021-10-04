@@ -9,13 +9,12 @@ name = "bgpd-cli"
 path = "src/main.rs"
 
 [dependencies]
-async-std = "0.99.8"
+tokio = { version = "1.12", features = [ "macros" ] }
 bgpd-rpc-lib = { path = "../../rpc_lib" }
 colored = "1.8.0"
-futures = { version = "0.3", features = ["async-await"] }
 itertools = "0.8.0"
 ipnetwork = "^0.16"
-jsonrpsee = { git = "https://github.com/paritytech/jsonrpsee", default-features = false, features = ["http"] }
+jsonrpsee = { version = "0.3.1", features = [ "client" ] }
 serde_json = "1.0"
 structopt = "0.2.18"
 prettytable-rs = "0.8.0"
