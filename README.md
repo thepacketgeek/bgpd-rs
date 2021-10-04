@@ -144,11 +144,11 @@ $ curl localhost:8080 -X POST -H "Content-Type: application/json" -d '{"jsonrpc"
 The `bgpd` [CLI](src/cli/mod.rs) can also be used to view peer & route information via the BGPd API (and announce routes too!)
 
 # Development
-I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) to act as my BGP peer for testing.
+I'm currently using [ExaBGP](https://github.com/Exa-Networks/exabgp) (Python) and [GoBGP](https://github.com/osrg/gobgp) (Go) to act as my BGP peers for testing.
 - Here's an [intro article](https://thepacketgeek.com/influence-routing-decisions-with-python-and-exabgp/) about installing & getting started with ExaBGP.
 
-## Testing Env setup
-For ExaBGP I have the following files (in the examples/exabgp dir):
+## ExaBGP setup
+With ExaBGP installed, you can use a config from the `examples/exabgp` dir:
 
 **conf_127.0.0.2.ini**
 ```ini
@@ -175,24 +175,55 @@ $ env exabgp.tcp.port=1179 exabgp.tcp.bind="127.0.0.2" exabgp ./conf_127.0.0.2.i
 ```
 > *--once only attempts a single connection, auto-quits when session ends*
 
+## Gobgp
+With GoBGP installed, you can use a config from the `examples/gobgp` dir:
 
+**gobgpd.toml**
+```toml
+[global.config]
+  as = 65000
+  router-id = "4.4.4.4"
+  port = 1179
+  local-address-list = ["127.0.0.4"]
+
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "127.0.0.1"
+    peer-as = 65000
+  [neighbors.transport.config]
+    passive-mode = false
+    local-address = "127.0.0.4"
+    remote-port = 1179
+  [neighbors.timers.config]
+    connect-retry = 5
+    hold-time = 30
+    keepalive-interval = 10
+```
+
+Running the gobgpd service with the command:
+
+```sh
+$ gobgpd -f ./examples/gobgp/gobgpd.toml
+```
+
+## BGPd Setup
 And then running `bgpd` as follows:
 
 Using IPv6
 ```sh
-$ cargo run -- --address "::1" --port 1179 ./examples/config.toml -vv
+$ cargo run -- run --address "::1" --port 1179 ./examples/config.toml -vv
 ```
 
 or IPv4 (defaults to 127.0.0.1)
 ```sh
-$ cargo run -- --port 1179 ./examples/config.toml -vv
+$ cargo run -- run --port 1179 ./examples/config.toml -vv
 ```
 
 You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
 ```sh
 $ cargo build --release
-$ sudo ./targets/release/bgpd ./examples/config.toml -vv
+$ sudo ./targets/release/bgpd run ./examples/config.toml -vv
 ```
 
 # Thanks to

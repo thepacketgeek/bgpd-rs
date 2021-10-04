@@ -97,7 +97,7 @@ pub struct RouteSpec {
     pub prefix: IpNetwork,
     /// Next-hop to reach this prefix
     pub next_hop: IpAddr,
-    #[serde(default = "SpecAttributes::default")]
+    #[serde(flatten, default = "SpecAttributes::default")]
     pub attributes: SpecAttributes,
 }
 
@@ -120,7 +120,7 @@ pub struct FlowSpec {
     pub action: String,
     /// Match rules (Src/Dst prefix, Src/Dst Port, TcpFlags, ...)
     pub matches: Vec<String>,
-    #[serde(default = "SpecAttributes::default")]
+    #[serde(flatten, default = "SpecAttributes::default")]
     pub attributes: SpecAttributes,
 }
 

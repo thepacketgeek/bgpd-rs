@@ -1,0 +1,18 @@
+[global.config]
+  as = 65000
+  router-id = "4.4.4.4"
+  port = 1179
+  local-address-list = ["127.0.0.4"]
+
+[[neighbors]]
+  [neighbors.config]
+    neighbor-address = "127.0.0.1"
+    peer-as = 65000
+  [neighbors.transport.config]
+    passive-mode = false
+    local-address = "127.0.0.4"
+    remote-port = 1179
+  [neighbors.timers.config]
+    connect-retry = 5
+    hold-time = 30
+    keepalive-interval = 10

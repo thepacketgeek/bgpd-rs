@@ -243,7 +243,7 @@ pub enum Command {
     #[structopt()]
     /// Run BGPd daemon
     Run(RunOptions),
-    #[structopt()]
+    #[structopt(alias = "s")]
     /// View details about BGPd
     Show(Show),
     /// Send routes to be advertised
@@ -263,9 +263,9 @@ pub struct RunOptions {
 pub enum Show {
     /// View configured neighbors and session details
     /// (* prefix means peer is disabled)
-    #[structopt(visible_alias = "peers")]
+    #[structopt(alias = "n", visible_alias = "peers")]
     Neighbors(NeighborOptions),
-    #[structopt()]
+    #[structopt(alias = "r")]
     Routes(Routes),
 }
 

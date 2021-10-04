@@ -1,11 +1,11 @@
 router_id = "1.1.1.1"       # Default Router ID for the service
 default_as = 65000
 poll_interval = 5
-bgp_socket = "0.0.0.0:1179" # Listen for BGP neighbors on all interfaces (IPv4 & IPv6)
-api_socket = "0.0.0.0:8080" # Listen for API requests on all interfaces (IPv4 & IPv6)
+bgp_socket = "127.0.0.1:1179" # Listen for BGP neighbors on all interfaces (IPv4 & IPv6)
+api_socket = "0.0.0.0:8081" # Listen for API requests on all interfaces (IPv4 & IPv6)
 
 [[peers]]
-remote_ip = "127.0.0.0/30"  # Can be a network or single peer (without CIDR mask)
+remote_ip = "127.0.0.0/28"  # Can be a network or single peer (without CIDR mask)
                             # Networks larger than 1 host will be implicitly passive
                             # and will accept any inbound peering sourced from the subnet
 dest_port = 1179
