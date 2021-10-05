@@ -193,7 +193,7 @@ mod tests {
             .iter()
             .find(|p| {
                 p.remote_ip
-                    == IpNetwork::new(IpAddr::from(Ipv4Addr::new(127, 0, 0, 0)), 30).unwrap()
+                    == IpNetwork::new(IpAddr::from(Ipv4Addr::new(127, 0, 0, 0)), 28).unwrap()
             })
             .unwrap();
         assert_eq!(v4_peer.local_as, Some(65000));

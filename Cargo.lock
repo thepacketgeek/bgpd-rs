@@ -109,8 +109,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "bgpd"
-version = "0.2.0"
+name = "bgpd-rs"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "bgp-rs",
