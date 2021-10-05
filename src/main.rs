@@ -9,9 +9,9 @@ use structopt::StructOpt;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
-use bgpd::cli;
-use bgpd::config;
-use bgpd::handler::Server;
+use bgpd_rs::cli;
+use bgpd_rs::config;
+use bgpd_rs::handler::Server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

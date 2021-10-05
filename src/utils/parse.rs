@@ -87,7 +87,7 @@ pub fn asn_from_dotted(value: &str) -> std::result::Result<u32, ParseError> {
 /// Convert a CIDR prefix (E.g. "192.168.0.0/24") to a bgp_rs::Prefix
 /// ```
 /// use bgp_rs::Prefix;
-/// use bgpd::utils::prefix_from_str;
+/// use bgpd_rs::utils::prefix_from_str;
 /// let prefix = prefix_from_str("192.168.10.0/24").unwrap();
 /// assert_eq!(prefix.length, 24);
 /// ```
