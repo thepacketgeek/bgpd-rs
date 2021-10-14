@@ -40,7 +40,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let bgp_listener = TcpListener::bind(&config.bgp_socket).await?;
             let mut bgp_server = Server::new(config.clone(), bgp_listener, config_rx)?;
             // Setup JSON RPC Server
-            bgp_server.serve_rpc_api(args.api.unwrap_or(config.api_socket));
+            let _api_handle = bgp_server
+                .serve_rpc_api(args.api.unwrap_or(config.api_socket))
+                .await?;
 
             let signals = Signals::new(&[SIGHUP])?;
             std::thread::spawn(move || {

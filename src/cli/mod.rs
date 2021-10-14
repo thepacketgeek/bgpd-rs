@@ -485,7 +485,7 @@ async fn run_cmd(args: &Args) -> Result<(), Box<dyn Error>> {
                         .map(|comm| comm.to_string())
                         .collect();
                 }
-                match client.advertise_route(spec).await? {
+                match client.advertise_route(spec).await {
                     Ok(advertised) => {
                         println!("Added route to RIB for announcement:");
                         let mut table = table::OutputTable::new();
@@ -524,7 +524,7 @@ async fn run_cmd(args: &Args) -> Result<(), Box<dyn Error>> {
                         .map(|comm| comm.to_string())
                         .collect();
                 }
-                match client.advertise_flow(spec).await? {
+                match client.advertise_flow(spec).await {
                     Ok(advertised) => {
                         println!("Added flow to RIB for announcement:");
                         let mut table = table::OutputTable::new();

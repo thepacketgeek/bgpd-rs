@@ -1,7 +1,10 @@
 use std::net::SocketAddr;
 
 use ipnetwork::IpNetwork;
-use jsonrpsee::http_server::HttpServerBuilder;
+use jsonrpsee::{
+    http_server::{HttpServerBuilder, HttpStopHandle},
+    types::error::Error as RPCError,
+};
 use log::info;
 
 use super::peers::{peer_to_detail, peer_to_summary};
@@ -13,7 +16,7 @@ use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 
 #[async_trait::async_trait]
 impl ApiServer for Server {
-    async fn show_peers(&self) -> Vec<PeerSummary> {
+    async fn show_peers(&self) -> Result<Vec<PeerSummary>, RPCError> {
         let mut output: Vec<PeerSummary> = vec![];
         let sessions = self.inner.sessions.read().await;
         let configs = sessions.get_peer_configs();
@@ -42,10 +45,10 @@ impl ApiServer for Server {
             })
             .collect::<Vec<PeerSummary>>();
         output.extend(idle_summaries);
-        output
+        Ok(output)
     }
 
-    async fn show_peer_detail(&self) -> Vec<PeerDetail> {
+    async fn show_peer_detail(&self) -> Result<Vec<PeerDetail>, RPCError> {
         let mut output: Vec<PeerDetail> = vec![];
         let sessions = self.inner.sessions.read().await;
         let configs = sessions.get_peer_configs();
@@ -74,10 +77,13 @@ impl ApiServer for Server {
             })
             .collect();
         output.extend(idle_details);
-        output
+        Ok(output)
     }
 
-    async fn show_routes_learned(&self, from_peer: Option<IpNetwork>) -> Vec<LearnedRoute> {
+    async fn show_routes_learned(
+        &self,
+        from_peer: Option<IpNetwork>,
+    ) -> Result<Vec<LearnedRoute>, RPCError> {
         let mut output: Vec<LearnedRoute> = vec![];
         let entries = {
             let rib = self.inner.rib.read().await;
@@ -98,10 +104,13 @@ impl ApiServer for Server {
         };
         let routes: Vec<_> = entries.into_iter().map(entry_to_route).collect();
         output.extend(routes);
-        output
+        Ok(output)
     }
 
-    async fn show_routes_advertised(&self, to_peer: Option<IpNetwork>) -> Vec<LearnedRoute> {
+    async fn show_routes_advertised(
+        &self,
+        to_peer: Option<IpNetwork>,
+    ) -> Result<Vec<LearnedRoute>, RPCError> {
         let mut output: Vec<LearnedRoute> = vec![];
         let sessions = self.inner.sessions.read().await;
         let active_sessions = sessions.sessions.read().await;
@@ -125,44 +134,33 @@ impl ApiServer for Server {
             .flatten()
             .collect();
         output.extend(routes);
-        output
+        Ok(output)
     }
 
-    async fn advertise_route(&self, route: RouteSpec) -> Result<LearnedRoute, String> {
-        match parse_route_spec(&route) {
-            Ok(update) => {
-                let (family, attributes, nlri) = update;
-                let mut rib = self.inner.rib.write().await;
-                let entry = rib.insert_from_api(family, attributes, nlri);
-                Ok(entry_to_route(entry))
-            }
-            Err(err) => Err(err.to_string()),
-        }
+    async fn advertise_route(&self, route: RouteSpec) -> Result<LearnedRoute, RPCError> {
+        let update = parse_route_spec(&route).map_err(|e| RPCError::Request(e.to_string()))?;
+        let (family, attributes, nlri) = update;
+        let mut rib = self.inner.rib.write().await;
+        let entry = rib.insert_from_api(family, attributes, nlri);
+        Ok(entry_to_route(entry))
     }
 
-    async fn advertise_flow(&self, flow: FlowSpec) -> Result<LearnedRoute, String> {
-        match parse_flow_spec(&flow) {
-            Ok(update) => {
-                let (family, attributes, nlri) = update;
-                let mut rib = self.inner.rib.write().await;
-                let entry = rib.insert_from_api(family, attributes, nlri);
-                Ok(entry_to_route(entry))
-            }
-            Err(err) => Err(err.to_string()),
-        }
+    async fn advertise_flow(&self, flow: FlowSpec) -> Result<LearnedRoute, RPCError> {
+        let update = parse_flow_spec(&flow).map_err(|e| RPCError::Request(e.to_string()))?;
+        let (family, attributes, nlri) = update;
+        let mut rib = self.inner.rib.write().await;
+        let entry = rib.insert_from_api(family, attributes, nlri);
+        Ok(entry_to_route(entry))
     }
 }
 
 impl Server {
-    pub fn serve_rpc_api(&self, socket: SocketAddr) {
+    pub async fn serve_rpc_api(&self, socket: SocketAddr) -> Result<HttpStopHandle, RPCError> {
         let server = self.clone();
         info!("Starting JSON-RPC server on {}...", socket);
-        tokio::task::spawn(async move {
-            HttpServerBuilder::default()
-                .build(socket)
-                .unwrap()
-                .start(server.into_rpc())
-                .await
-        });
+        let handle = HttpServerBuilder::default()
+            .build(socket)?
+            .start(server.into_rpc())?;
+        Ok(handle)
     }
 }
