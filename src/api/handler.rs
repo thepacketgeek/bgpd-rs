@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use ipnetwork::IpNetwork;
 use jsonrpsee::{
-    http_server::{HttpServerBuilder, HttpStopHandle},
+    http_server::{HttpServerBuilder, HttpServerHandle},
     types::error::Error as RPCError,
 };
 use log::info;
@@ -155,7 +155,7 @@ impl ApiServer for Server {
 }
 
 impl Server {
-    pub async fn serve_rpc_api(&self, socket: SocketAddr) -> Result<HttpStopHandle, RPCError> {
+    pub async fn serve_rpc_api(&self, socket: SocketAddr) -> Result<HttpServerHandle, RPCError> {
         let server = self.clone();
         info!("Starting JSON-RPC server on {}...", socket);
         let handle = HttpServerBuilder::default()
