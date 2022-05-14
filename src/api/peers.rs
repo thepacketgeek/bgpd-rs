@@ -80,11 +80,7 @@ pub fn peer_to_detail(
 fn capabilities_export(capabilities: &Capabilities) -> Vec<String> {
     let mut caps: Vec<String> = vec![];
     for fam in &capabilities.MP_BGP_SUPPORT {
-        caps.push(format!(
-            "Address family {} {}",
-            fam.0.to_string(),
-            fam.1.to_string()
-        ))
+        caps.push(format!("Address family {} {}", fam.0, fam.1))
     }
     if capabilities.ROUTE_REFRESH_SUPPORT {
         caps.push("Route Refresh".to_string());

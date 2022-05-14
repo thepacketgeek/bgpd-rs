@@ -13,7 +13,7 @@ pub struct Family {
 
 impl fmt::Display for Family {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {}", self.afi.to_string(), self.safi.to_string())
+        write!(f, "{} {}", self.afi, self.safi)
     }
 }
 

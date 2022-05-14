@@ -5,7 +5,7 @@ use std::sync::Arc;
 use clap::Parser;
 use env_logger::Builder;
 use log::{debug, error, info, trace, LevelFilter};
-use signal_hook::{iterator::Signals, SIGHUP};
+use signal_hook::{consts::signal::SIGHUP, iterator::Signals};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .serve_rpc_api(args.api.unwrap_or(config.api_socket))
                 .await?;
 
-            let signals = Signals::new(&[SIGHUP])?;
+            let mut signals = Signals::new(&[SIGHUP])?;
             std::thread::spawn(move || {
                 for sig in signals.forever() {
                     info!("Received {}, reloading config", sig);

@@ -23,7 +23,7 @@ families = [
 passive = true              # If passive, bgpd won't attempt outbound connections
 [[peers.static_routes]]     # Static routes can be added
 prefix = "9.9.9.0/24"
-next_hop = "192.168.88.1"
+next_hop = "1.1.1.1"
 as_path = ["65000", "500"]
 communities = ["101", "202", "65000:99"]
 [[peers.static_flows]]      # And Static Flowspec rules

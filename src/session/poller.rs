@@ -150,7 +150,7 @@ impl Poller {
             },
             // If DelayQueue.is_empty() and is polled, CPU spikes to 100%
             outgoing = self.delay_queue.next(), if !self.delay_queue.is_empty() => {
-                if let Some(Ok(peer)) = outgoing {
+                if let Some(peer) = outgoing {
                     let addr = peer.into_inner();
                     trace!("Poller outbound triggered for {}", addr);
                     // Peer may not be present if an incoming connection

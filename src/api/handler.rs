@@ -95,8 +95,7 @@ impl ApiServer for Server {
                     // Find peers contained in the `from_peer` prefix
                     .filter(|addr| peer.contains(**addr))
                     // Collect routes for each matching peer
-                    .map(|p| rib.get_routes_from_peer(*p))
-                    .flatten()
+                    .flat_map(|p| rib.get_routes_from_peer(*p))
                     .collect::<Vec<_>>()
             } else {
                 rib.get_routes()
@@ -120,7 +119,7 @@ impl ApiServer for Server {
                 Some(prefix) => prefix.contains(s.addr),
                 _ => true,
             })
-            .map(|s| {
+            .flat_map(|s| {
                 s.routes
                     .advertised()
                     .into_iter()
@@ -131,7 +130,6 @@ impl ApiServer for Server {
                     })
                     .collect::<Vec<_>>()
             })
-            .flatten()
             .collect();
         output.extend(routes);
         Ok(output)

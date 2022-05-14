@@ -433,11 +433,10 @@ fn fsm_err_for_state(state: SessionState) -> u8 {
 fn asn_from_open(open: &Open) -> u32 {
     open.parameters
         .iter()
-        .map(|p| match p {
+        .flat_map(|p| match p {
             OpenParameter::Capabilities(caps) => caps.clone(),
             _ => vec![],
         })
-        .flatten()
         .map(|c| match c {
             OpenCapability::FourByteASN(asn) => Some(asn),
             _ => None,

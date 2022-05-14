@@ -3,7 +3,7 @@ mod hold_timer;
 mod manager;
 mod message_counts;
 mod poller;
-mod session;
+mod lib;
 
 use std::convert::From;
 use std::error;
@@ -15,7 +15,7 @@ use hold_timer::HoldTimer;
 pub use manager::SessionManager;
 use message_counts::MessageCounts;
 use poller::{Poller, PollerTx};
-pub use session::Session;
+pub use lib::Session;
 
 use bgp_rs::Update;
 

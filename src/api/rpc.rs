@@ -72,7 +72,7 @@ pub struct LearnedRoute {
     pub communities: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SpecAttributes {
     pub origin: Option<String>,
     #[serde(default = "Vec::new")]
@@ -83,18 +83,6 @@ pub struct SpecAttributes {
     pub communities: Vec<String>,
     // TODO: Accept some sort of Policy Object
     //       So that this can be targeted at peer(s)
-}
-
-impl std::default::Default for SpecAttributes {
-    fn default() -> Self {
-        Self {
-            origin: None,
-            as_path: vec![],
-            local_pref: None,
-            multi_exit_disc: None,
-            communities: vec![],
-        }
-    }
 }
 
 /// API Input for Route to advertise to peers

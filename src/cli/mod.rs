@@ -333,7 +333,7 @@ pub struct Route {
     #[clap(short, long)]
     origin: Option<String>,
     /// AS Path (e.g. --as-path 100 200 65000.100), defaults to an empty path
-    #[clap(short, long)]
+    #[clap(short, long, required = true)]
     as_path: Option<String>,
     /// Local Pref (defaults to 100)
     #[clap(short = 'p', long)]
@@ -422,7 +422,7 @@ async fn run_cmd(args: &Args) -> Result<(), Box<dyn Error>> {
                         for capability in &peer.capabilities {
                             lines.push(format!("  {}", capability));
                         }
-                        lines.push(format!("",));
+                        lines.push("".to_owned());
                         if let (Some(sent), Some(rcvd)) = (summ.msg_received, summ.msg_sent) {
                             lines.push("Message Statistics:".to_string());
                             lines.push("                    Sent      Received".to_string());

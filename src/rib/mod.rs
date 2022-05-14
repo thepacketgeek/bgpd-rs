@@ -82,7 +82,7 @@ impl RIB {
     pub fn get_routes(&self) -> Vec<Arc<ExportEntry>> {
         self.entries
             .iter()
-            .map(|(group_key, entries)| {
+            .flat_map(|(group_key, entries)| {
                 let attributes = {
                     let group = self.cache.get(*group_key).expect("Cached PAs exist");
                     Arc::new(PathAttributes::from_group(group))
@@ -92,15 +92,15 @@ impl RIB {
                     .map(|e| Arc::new((e, attributes.clone()).into()))
                     .collect::<Vec<_>>()
             })
-            .flatten()
             .collect()
     }
 
     pub fn get_routes_from_peer(&self, peer: IpAddr) -> Vec<Arc<ExportEntry>> {
         self.entries
             .iter()
-            .map(|(group_key, entries)| entries.iter().map(|e| (group_key, e)).collect::<Vec<_>>())
-            .flatten()
+            .flat_map(|(group_key, entries)| {
+                entries.iter().map(|e| (group_key, e)).collect::<Vec<_>>()
+            })
             .filter(|(_, e)| e.source == EntrySource::Peer(peer))
             .map(|(group_key, e)| {
                 let attributes = {
@@ -118,8 +118,9 @@ impl RIB {
         //       learned from the peer
         self.entries
             .iter()
-            .map(|(group_key, entries)| entries.iter().map(|e| (group_key, e)).collect::<Vec<_>>())
-            .flatten()
+            .flat_map(|(group_key, entries)| {
+                entries.iter().map(|e| (group_key, e)).collect::<Vec<_>>()
+            })
             .filter(|(_, e)| e.source != EntrySource::Peer(peer))
             .map(|(group_key, e)| {
                 let attributes = {
