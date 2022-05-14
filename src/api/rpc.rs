@@ -2,23 +2,29 @@
 use ipnetwork::IpNetwork;
 use std::net::IpAddr;
 
-use jsonrpsee::{types::error::Error as RPCError, proc_macros::rpc};
+use jsonrpsee::{core::RpcResult, proc_macros::rpc};
 use serde::{self, Deserialize, Serialize};
 
 #[rpc(client, server)]
 pub trait Api {
     #[method(name = "show_peers")]
-    async fn show_peers(&self) -> Result<Vec<PeerSummary>, RPCError>;
+    async fn show_peers(&self) -> RpcResult<Vec<PeerSummary>>;
     #[method(name = "show_peer_detail")]
-    async fn show_peer_detail(&self) -> Result<Vec<PeerDetail>, RPCError>;
+    async fn show_peer_detail(&self) -> RpcResult<Vec<PeerDetail>>;
     #[method(name = "show_routes_learned")]
-    async fn show_routes_learned(&self, from_peer: Option<IpNetwork>) -> Result<Vec<LearnedRoute>, RPCError>;
+    async fn show_routes_learned(
+        &self,
+        from_peer: Option<IpNetwork>,
+    ) -> RpcResult<Vec<LearnedRoute>>;
     #[method(name = "show_routes_advertised")]
-    async fn show_routes_advertised(&self, to_peer: Option<IpNetwork>) -> Result<Vec<LearnedRoute>, RPCError>;
+    async fn show_routes_advertised(
+        &self,
+        to_peer: Option<IpNetwork>,
+    ) -> RpcResult<Vec<LearnedRoute>>;
     #[method(name = "advertise_route")]
-    async fn advertise_route(&self, route: RouteSpec) -> Result<LearnedRoute, RPCError>;
+    async fn advertise_route(&self, route: RouteSpec) -> RpcResult<LearnedRoute>;
     #[method(name = "advertise_flow")]
-    async fn advertise_flow(&self, flow: FlowSpec) -> Result<LearnedRoute, RPCError>;
+    async fn advertise_flow(&self, flow: FlowSpec) -> RpcResult<LearnedRoute>;
 }
 
 #[derive(Debug, Deserialize, Serialize)]

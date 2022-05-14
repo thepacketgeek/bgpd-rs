@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 
 use ipnetwork::IpNetwork;
 use jsonrpsee::{
+    core::{Error, RpcResult},
     http_server::{HttpServerBuilder, HttpServerHandle},
-    types::error::Error as RPCError,
 };
 use log::info;
 
@@ -16,7 +16,7 @@ use crate::utils::{get_host_address, parse_flow_spec, parse_route_spec};
 
 #[async_trait::async_trait]
 impl ApiServer for Server {
-    async fn show_peers(&self) -> Result<Vec<PeerSummary>, RPCError> {
+    async fn show_peers(&self) -> RpcResult<Vec<PeerSummary>> {
         let mut output: Vec<PeerSummary> = vec![];
         let sessions = self.inner.sessions.read().await;
         let configs = sessions.get_peer_configs();
@@ -48,7 +48,7 @@ impl ApiServer for Server {
         Ok(output)
     }
 
-    async fn show_peer_detail(&self) -> Result<Vec<PeerDetail>, RPCError> {
+    async fn show_peer_detail(&self) -> RpcResult<Vec<PeerDetail>> {
         let mut output: Vec<PeerDetail> = vec![];
         let sessions = self.inner.sessions.read().await;
         let configs = sessions.get_peer_configs();
@@ -83,7 +83,7 @@ impl ApiServer for Server {
     async fn show_routes_learned(
         &self,
         from_peer: Option<IpNetwork>,
-    ) -> Result<Vec<LearnedRoute>, RPCError> {
+    ) -> RpcResult<Vec<LearnedRoute>> {
         let mut output: Vec<LearnedRoute> = vec![];
         let entries = {
             let rib = self.inner.rib.read().await;
@@ -110,7 +110,7 @@ impl ApiServer for Server {
     async fn show_routes_advertised(
         &self,
         to_peer: Option<IpNetwork>,
-    ) -> Result<Vec<LearnedRoute>, RPCError> {
+    ) -> RpcResult<Vec<LearnedRoute>> {
         let mut output: Vec<LearnedRoute> = vec![];
         let sessions = self.inner.sessions.read().await;
         let active_sessions = sessions.sessions.read().await;
@@ -137,16 +137,16 @@ impl ApiServer for Server {
         Ok(output)
     }
 
-    async fn advertise_route(&self, route: RouteSpec) -> Result<LearnedRoute, RPCError> {
-        let update = parse_route_spec(&route).map_err(|e| RPCError::Request(e.to_string()))?;
+    async fn advertise_route(&self, route: RouteSpec) -> RpcResult<LearnedRoute> {
+        let update = parse_route_spec(&route).map_err(|e| Error::Custom(e.to_string()))?;
         let (family, attributes, nlri) = update;
         let mut rib = self.inner.rib.write().await;
         let entry = rib.insert_from_api(family, attributes, nlri);
         Ok(entry_to_route(entry))
     }
 
-    async fn advertise_flow(&self, flow: FlowSpec) -> Result<LearnedRoute, RPCError> {
-        let update = parse_flow_spec(&flow).map_err(|e| RPCError::Request(e.to_string()))?;
+    async fn advertise_flow(&self, flow: FlowSpec) -> RpcResult<LearnedRoute> {
+        let update = parse_flow_spec(&flow).map_err(|e| Error::Custom(e.to_string()))?;
         let (family, attributes, nlri) = update;
         let mut rib = self.inner.rib.write().await;
         let entry = rib.insert_from_api(family, attributes, nlri);
@@ -155,11 +155,12 @@ impl ApiServer for Server {
 }
 
 impl Server {
-    pub async fn serve_rpc_api(&self, socket: SocketAddr) -> Result<HttpServerHandle, RPCError> {
+    pub async fn serve_rpc_api(&self, socket: SocketAddr) -> RpcResult<HttpServerHandle> {
         let server = self.clone();
         info!("Starting JSON-RPC server on {}...", socket);
         let handle = HttpServerBuilder::default()
-            .build(socket)?
+            .build(socket)
+            .await?
             .start(server.into_rpc())?;
         Ok(handle)
     }

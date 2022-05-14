@@ -30,7 +30,7 @@ colored = { version = "1.8", optional = true }
 env_logger = "0.6.1"
 ipnetwork = "^0.16"
 itertools = "^0.8.1"
-jsonrpsee = { version = "0.5.1", features = [ "client", "server", "macros" ] }
+jsonrpsee = { version = "0.13.1", features = [ "client", "server", "macros" ] }
 futures = { version = "^0.3" }
 log = "0.4.6"
 net2 = "0.2.33"
