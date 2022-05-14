@@ -1,6 +1,8 @@
 //! # BGPd CLI
 //!
-//! The CLI provided for running the BGPd daemon can also be used to interact with a running instance of BGPd. It uses the default endpoint for the BGPd HTTP API (localhost:8080), but you can point to BGPd running remotely using the `--host` and `--port` options.
+//! The CLI provided for running the BGPd daemon can also be used to interact with a running instance of BGPd.
+//! It uses the default endpoint for the BGPd HTTP API (localhost:8080),
+//! but you can point to BGPd running remotely using the `--host` and `--port` options.
 //!
 //! ## Features
 //! - [x] CLI interface for viewing peer status and details
@@ -30,6 +32,7 @@
 //!
 //! Peer Detail:
 //! ```sh
+//! $ bgpd show neighbors detail
 //! BGP neighbor is 127.0.0.3,  remote AS 65000, local AS 65000
 //!   *Peer is Disabled
 //!   Neighbor capabilities:
@@ -205,11 +208,11 @@
 use std::error::Error;
 use std::net::{IpAddr, SocketAddr};
 
+use clap::Parser;
 use colored::*;
 use ipnetwork::IpNetwork;
 use itertools::Itertools;
 use jsonrpsee::http_client::HttpClientBuilder;
-use structopt::StructOpt;
 
 use crate::api::rpc::{ApiClient, FlowSpec, RouteSpec};
 
@@ -218,146 +221,157 @@ mod table;
 
 use display::{AdvertisedRouteRow, LearnedRouteRow, PeerSummaryRow};
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "bgpd-cli", rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(name = "bgpd-cli", rename_all = "kebab-case")]
 /// CLI to interact with BGPd
 pub struct Args {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     pub cmd: Command,
-    #[structopt(short, long, default_value = "127.0.0.1")]
+    #[clap(long, default_value = "127.0.0.1")]
     pub host: String,
-    #[structopt(short, long, default_value = "8080")]
+    #[clap(short, long, default_value_t = 8080)]
     pub port: u16,
     /// API Listening address/port (E.g. 127.0.0.1:8080). If not provided, will fall back to config file value
-    #[structopt(long)]
+    #[clap(long)]
     pub api: Option<SocketAddr>,
     /// Show debug logs (additive for trace logs)
-    #[structopt(short, parse(from_occurrences), global = true)]
+    #[clap(short, parse(from_occurrences), global = true)]
     pub verbose: u8,
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 /// CLI to query BGPd
 pub enum Command {
-    #[structopt()]
+    #[clap()]
     /// Run BGPd daemon
     Run(RunOptions),
-    #[structopt(alias = "s")]
+    #[clap(alias = "s")]
     /// View details about BGPd
+    #[clap(subcommand)]
     Show(Show),
     /// Send routes to be advertised
+    #[clap(subcommand)]
     Advertise(Advertise),
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "bgpd", rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(name = "bgpd", rename_all = "kebab-case")]
 /// BGPd Server
 pub struct RunOptions {
     /// Path to BGP service config.toml
     pub config_path: String,
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub enum Show {
     /// View configured neighbors and session details
     /// (* prefix means peer is disabled)
-    #[structopt(alias = "n", visible_alias = "peers")]
+    #[clap(alias = "n", visible_alias = "peers")]
     Neighbors(NeighborOptions),
-    #[structopt(alias = "r")]
+    #[clap(alias = "r", subcommand)]
     Routes(Routes),
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
+pub enum ShowOptions {
+    /// Show expanded details
+    #[clap(alias = "d")]
+    Detail,
+}
+
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub struct NeighborOptions {
-    #[structopt()]
-    detail: bool,
-    // #[structopt()]
+    ///  IP Address or Network Prefix to filter peer(s)
+    #[clap()]
+    peer: Option<IpNetwork>,
+    #[clap(subcommand)]
+    options: Option<ShowOptions>,
+    // #[clap()]
     // family: Option<AFI>,
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub enum Routes {
-    #[structopt()]
     Learned(RouteOptions),
-    #[structopt()]
     Advertised(RouteOptions),
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub struct RouteOptions {
     /// IP Address or Network Prefix to match route source
-    #[structopt()]
+    #[clap()]
     peer: Option<IpNetwork>,
-    // #[structopt()]
+    // #[clap()]
     // family: Option<AFI>,
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub enum Advertise {
-    #[structopt()]
+    #[clap()]
     Route(Route),
-    #[structopt()]
+    #[clap()]
     Flow(Flow),
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub struct Route {
     /// Prefix to advertise
-    #[structopt()]
+    #[clap()]
     prefix: IpNetwork,
     /// Next Hop for this route
-    #[structopt()]
+    #[clap()]
     next_hop: IpAddr,
     /// Origin (defaults to Incomplete)
-    #[structopt(short, long)]
+    #[clap(short, long)]
     origin: Option<String>,
     /// AS Path (e.g. --as-path 100 200 65000.100), defaults to an empty path
-    #[structopt(short, long)]
+    #[clap(short, long)]
     as_path: Option<String>,
     /// Local Pref (defaults to 100)
-    #[structopt(short = "p", long)]
+    #[clap(short = 'p', long)]
     local_pref: Option<u32>,
     /// Multi-exit-discriminator
-    #[structopt(long)]
+    #[clap(long)]
     med: Option<u32>,
     /// Communities (e.g. --communities 100 200 redirect:65000:100)
-    #[structopt(short, long)]
+    #[clap(short, long)]
     communities: Option<String>,
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(rename_all = "kebab-case")]
+#[derive(Parser, Debug)]
+#[clap(rename_all = "kebab-case")]
 pub struct Flow {
     /// AFI [ipv6, ipv4]
-    #[structopt()]
+    #[clap()]
     family: String,
     /// Flowspec action E.g. "redirect 6:302" or "traffic-rate 302"
-    #[structopt()]
+    #[clap()]
     action: String,
     /// Origin (defaults to Incomplete)
-    #[structopt(short, long)]
+    #[clap(short, long)]
     matches: Vec<String>,
     /// Origin (defaults to Incomplete)
-    #[structopt(short, long)]
+    #[clap(short, long)]
     origin: Option<String>,
     /// AS Path (e.g. --as-path 100 200 65000.100), defaults to an empty path
-    #[structopt(short, long)]
+    #[clap(short, long)]
     as_path: Option<String>,
     /// Local Pref (defaults to 100)
-    #[structopt(short = "p", long)]
+    #[clap(short = 'p', long)]
     local_pref: Option<u32>,
     /// Multi-exit-discriminator
-    #[structopt(long)]
+    #[clap(long)]
     med: Option<u32>,
     /// Communities (e.g. --communities 100 200 redirect:65000:100)
-    #[structopt(short, long)]
+    #[clap(short, long)]
     communities: Option<String>,
 }
 
@@ -369,7 +383,7 @@ async fn run_cmd(args: &Args) -> Result<(), Box<dyn Error>> {
     match &args.cmd {
         Command::Show(show) => match show {
             Show::Neighbors(options) => {
-                if options.detail {
+                if matches!(options.options, Some(ShowOptions::Detail)) {
                     let peers: Vec<_> = client.show_peer_detail().await?;
                     for peer in peers {
                         let summ = peer.summary;

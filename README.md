@@ -207,19 +207,13 @@ $ gobgpd -f ./examples/gobgp/gobgpd.toml
 ```
 
 ## BGPd Setup
-And then running `bgpd` as follows:
+Start the bgpd-rs daemon running `bgpd` with a provided config as follows:
 
-Using IPv6
 ```sh
-$ cargo run -- run --address "::1" --port 1179 ./examples/config.toml -vv
+$ cargo run -- run ./examples/config.toml -vv
 ```
 
-or IPv4 (defaults to 127.0.0.1)
-```sh
-$ cargo run -- run --port 1179 ./examples/config.toml -vv
-```
-
-You may notice that I'm using TCP port 1179 for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
+You may notice that I'm using TCP port 1179 in the example config for testing, if you want/need to use TCP 179 for testing with a peer that can't change the port (*cough*Cisco*cough*), you need to run bgpd with sudo permissions:
 
 ```sh
 $ cargo build --release

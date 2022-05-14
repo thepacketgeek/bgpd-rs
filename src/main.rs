@@ -2,10 +2,10 @@ use std::error::Error;
 use std::process;
 use std::sync::Arc;
 
+use clap::Parser;
 use env_logger::Builder;
 use log::{debug, error, info, trace, LevelFilter};
 use signal_hook::{iterator::Signals, SIGHUP};
-use structopt::StructOpt;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
@@ -15,7 +15,7 @@ use bgpd_rs::handler::Server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let args = cli::Args::from_args();
+    let args = cli::Args::parse();
 
     let (bgpd_level, other_level) = match args.verbose {
         0 => (LevelFilter::Info, LevelFilter::Warn),
@@ -27,6 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .filter(Some("bgpd"), bgpd_level)
         .filter(None, other_level)
         .init();
+    debug!("Args: {:?}", args);
     info!("Logging at levels {}/{}", bgpd_level, other_level);
 
     match args.cmd {
